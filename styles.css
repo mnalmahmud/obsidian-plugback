@@ -1,0 +1,60 @@
+.plugback-settings {
+	--plugback-border: var(--background-modifier-border);
+}
+.plugback-settings .plugback-status .setting-item-description { white-space: pre-line; }
+.plugback-settings .plugback-inventories {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+	align-items: start;
+	gap: var(--size-4-3);
+	margin: var(--size-4-5) 0;
+}
+.plugback-settings .plugback-inventory {
+	min-width: 0;
+	border: 1px solid var(--plugback-border);
+	border-radius: var(--radius-m);
+}
+.plugback-settings .plugback-inventory > summary {
+	cursor: pointer;
+	padding: var(--size-4-4);
+}
+.plugback-settings .plugback-inventory > summary:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+.plugback-settings .plugback-inventory-title { font-weight: var(--font-semibold); }
+.plugback-settings .plugback-inventory-count {
+	display: block;
+	margin-top: var(--size-4-2);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.plugback-settings .plugback-inventory-list {
+	border-top: 1px solid var(--plugback-border);
+	max-height: 24rem;
+	overflow-y: auto;
+	padding: 0 var(--size-4-4);
+}
+.plugback-settings .plugback-extension {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-3);
+	padding: var(--size-4-3) 0;
+}
+.plugback-settings .plugback-extension + .plugback-extension { border-top: 1px solid var(--plugback-border); }
+.plugback-settings .plugback-extension-label { min-width: 0; overflow-wrap: anywhere; }
+.plugback-settings .plugback-extension-label small {
+	display: block;
+	color: var(--text-faint);
+	margin-top: var(--size-2-1);
+}
+.plugback-settings .plugback-extension-state {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	max-width: 45%;
+	text-align: right;
+}
+.plugback-settings .plugback-empty { color: var(--text-muted); font-size: var(--font-ui-small); }
+.plugback-settings .plugback-issues { margin-top: var(--size-4-5); }
+.plugback-settings .plugback-issues .setting-item-description { overflow-wrap: anywhere; }

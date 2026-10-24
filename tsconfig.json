@@ -1,0 +1,24 @@
+{
+	"compilerOptions": {
+		"inlineSourceMap": true,
+		"inlineSources": true,
+		"module": "ESNext",
+		"target": "ES2025",
+		"allowJs": false,
+		"strict": true,
+		"noImplicitAny": true,
+		"strictNullChecks": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		"noFallthroughCasesInSwitch": true,
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		"moduleResolution": "bundler",
+		"isolatedModules": true,
+		"erasableSyntaxOnly": true,
+		"skipLibCheck": true,
+		"types": ["node"],
+		"lib": ["DOM", "ES2025"]
+	},
+	"include": ["src/**/*.ts", "tests/**/*.ts"]
+}

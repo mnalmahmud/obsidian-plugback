@@ -1,0 +1,9 @@
+{
+	"id": "plugback",
+	"name": "Plugback",
+	"version": "1.0.0",
+	"minAppVersion": "1.8.7",
+	"description": "Synchronize installed Obsidian community plugins and themes across devices without storing downloaded files in Git.",
+	"author": "Muhtasham Nawr al-Mahmud",
+	"isDesktopOnly": false
+}
