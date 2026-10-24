@@ -12,8 +12,10 @@ class Element {
 	get buttons(): Button[] { return [...this.controls, ...this.children.flatMap(child => child.buttons)]; }
 	text = "";
 	open = false;
+	scrollTop = 0;
 	hidden = false;
 	cls = "";
+	addClass(cls: string): void { this.cls = cls; }
 	setText(text: string): void { this.text = text; }
 	setAttribute(_name: string, _value: string): void {}
 	find(cls: string): Element | undefined {
@@ -22,6 +24,7 @@ class Element {
 	get content(): string { return [this.text, ...this.children.map(child => child.content)].join(" "); }
 	empty(): void {
 		this.children = [];
+		this.scrollTop = 0;
 		this.controls.length = 0;
 	}
 	private append(options?: { text?: string; cls?: string }): Element {
@@ -38,10 +41,12 @@ class Element {
 }
 interface Button { text: string; disabled: boolean; click: () => void }
 class Setting {
+	settingEl: Element;
 	private readonly controls: Button[];
 	nameEl: Element;
 	descEl: Element;
 	constructor(el: Element) {
+		this.settingEl = el;
 		this.controls = el.controls;
 		this.nameEl = el.createDiv();
 		this.descEl = el.createDiv();
@@ -93,7 +98,12 @@ runInNewContext(output.outputFiles[0]!.text, { module: mod, exports: mod.exports
 const ui = mod.exports as {
 	statusText(snapshot: Snapshot): { title: string; description: string };
 	counts(wanted: readonly string[], installed: ReadonlyMap<string, string>): string;
-	PlugbackSettingTab: new (app: unknown, plugin: unknown, core: unknown, unavailable: null) => { containerEl: Element; display(): void; hide(): void };
+	PlugbackSettingTab: new (app: unknown, plugin: unknown, core: unknown, unavailable: null) => {
+		containerEl: Element;
+		display(): void;
+		hide(): void;
+		getSettingDefinitions(): Array<{ name: string; aliases: string[]; render(setting: Setting): () => void }>;
+	};
 };
 function click(tab: { containerEl: Element }, text: string): void {
 	const button = tab.containerEl.buttons.findLast(button => button.text === text);
@@ -150,9 +160,9 @@ void test("actions are disabled during a running check", () => {
 void test("status is derived from typed state and preserves actionable storage guidance", async () => {
 	const f = fixture();
 	const core = f.core();
-	assert.equal(ui.statusText(core.snapshot).title, "Not checked");
+	assert.equal(ui.statusText(core.snapshot).title, "Not checked.");
 	await core.check();
-	assert.equal(ui.statusText(core.snapshot).title, "Up to date");
+	assert.equal(ui.statusText(core.snapshot).title, "Up to date.");
 	const snapshot = core.snapshot;
 	snapshot.phase = "error";
 	snapshot.error = { code: "missing-data", message: "data.json is missing. Restore it from sync." };
@@ -170,17 +180,22 @@ void test("snapshot updates retain controls and open inventories while showing f
 	const f = fixture();
 	const core = f.core();
 	await core.check();
+	const snapshot = core.snapshot;
+	const ids = Array.from({ length: 30 }, (_, i) => `p${i + 1}`);
+	snapshot.data!.plugins = ids;
+	snapshot.installed!.plugins = new Map(ids.map(id => [id, id]));
 	let render: ((snapshot: Snapshot) => void) | undefined;
 	const tab = new ui.PlugbackSettingTab({}, {}, {
-		snapshot: core.snapshot,
+		snapshot,
 		subscribe(listener: (snapshot: Snapshot) => void) { render = listener; return () => {}; }
 	}, null);
 	tab.display();
 	const root = tab.containerEl.find("plugback-settings")!;
 	const inventory = root.find("plugback-inventory")!;
 	inventory.open = true;
+	const list = inventory.find("plugback-inventory-list")!;
+	list.scrollTop = 120;
 	const check = tab.containerEl.buttons[0];
-	const snapshot = core.snapshot;
 	snapshot.phase = "checking";
 	render!(snapshot);
 	assert.equal(tab.containerEl.buttons.length, 2);
@@ -188,6 +203,7 @@ void test("snapshot updates retain controls and open inventories while showing f
 	assert.equal(check!.disabled, true);
 	assert.equal(root.find("plugback-inventory"), inventory);
 	assert.equal(inventory.open, true);
+	assert.equal(list.scrollTop, 120);
 	snapshot.phase = "idle";
 	snapshot.issues = [{ code: "operation", action: { kind: "plugin", id: "p2", present: true }, message: "Download failed" }];
 	render!(snapshot);
@@ -239,4 +255,23 @@ void test("inventories show only synced plugins and themes, including missing en
 	assert.match(tab.containerEl.content, /Sync data unavailable/);
 	assert.doesNotMatch(tab.containerEl.content, /One|Synced Theme|Custom|Two|Local Theme/);
 	tab.hide();
+});
+
+void test("declarative settings are searchable and mount the live view with cleanup", async () => {
+	const f = fixture();
+	const core = f.core();
+	const tab = new ui.PlugbackSettingTab({}, {}, core, null);
+	const definitions = tab.getSettingDefinitions();
+	assert.equal(definitions[0]!.name, "Sync");
+	assert.deepEqual(Array.from(definitions[0]!.aliases), ["Check now", "Plugins", "Themes", "Add local extensions"]);
+	assert.equal(f.scans, 0);
+	const row = new Element();
+	const cleanup = definitions[0]!.render(new Setting(row));
+	assert.deepEqual(row.buttons.map(button => button.text), ["Check now", "Add"]);
+	await core.check();
+	assert.match(row.content, /Up to date/);
+	const before = row.content;
+	cleanup();
+	core.stop();
+	assert.equal(row.content, before);
 });

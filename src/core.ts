@@ -274,6 +274,7 @@ export class Core {
 			data, installed, issues: [...issues.values()]
 		});
 		let changed = 0;
+		let repaired = 0;
 		for (const action of actions) {
 			this.require(guard);
 			try {
@@ -309,7 +310,8 @@ export class Core {
 					);
 				}
 				issues.delete(key(action));
-				changed++;
+				if (action.present && prepared.repair) repaired++;
+				else changed++;
 			}
 			catch (error) {
 				if (error instanceof Interrupted ||
@@ -320,6 +322,7 @@ export class Core {
 			}
 		}
 		installed = await this.scan(guard);
+		this.publish({ installed, issues: [...issues.values()] });
 		if (services.activate) {
 			try {
 				await services.activate(guard);
@@ -341,6 +344,9 @@ export class Core {
 		});
 		if (changed) {
 			services.notify(`Plugback synchronized ${changed} ${changed === 1 ? "extension" : "extensions"}.`);
+		}
+		if (repaired) {
+			services.notify(`Plugback repaired ${repaired} ${repaired === 1 ? "installation" : "installations"}.`);
 		}
 	}
 	private captureInstalled(installed: Installed): Data {

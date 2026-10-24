@@ -20,6 +20,7 @@ interface Runtime {
 function pluginFixture(installed = true) {
 	const files = new Files();
 	const calls: string[] = [];
+	const notices: string[] = [];
 	let cancellations = 0;
 	let ready = () => {
 	};
@@ -111,6 +112,7 @@ function pluginFixture(installed = true) {
 			PluginSettingTab: class {
 			},
 			Notice: class {
+				constructor(message: string) { notices.push(message); }
 			},
 			Platform: { isMobile: false },
 			normalizePath: (path: string) => path,
@@ -135,6 +137,7 @@ function pluginFixture(installed = true) {
 		plugin,
 		files,
 		calls,
+		notices,
 		ready: () => ready(),
 		manager,
 		get cancellations() {
@@ -154,6 +157,7 @@ void test("production bundle starts, installs missing bytes, preserves settings,
 	assert.ok(seedCode.length < readFileSync("seed/main.js", "utf8").length);
 	assert.equal(seedCode.trim().split("\n").length, 1);
 	assert.ok(f.calls.includes("install:one"));
+	assert.deepEqual(f.notices, ["Plugback synchronized 1 extension."]);
 	assert.ok(f.calls.includes("enable:one"));
 	assert.equal(f.files.content.get(".custom/plugins/one/data.json"), '{"user":"settings"}');
 	const originalData = f.files.content.get(".custom/plugins/plugback/data.json");
@@ -198,6 +202,7 @@ void test("production bundle repairs empty plugin code without replacing its set
 	f.ready();
 	await f.plugin.check();
 	assert.ok(f.calls.includes("install:one"));
+	assert.deepEqual(f.notices, ["Plugback repaired 1 installation."]);
 	assert.ok(f.calls.includes("enable:one"));
 	assert.ok(f.files.content.get(".custom/plugins/one/main.js"));
 	assert.equal(f.files.content.get(".custom/plugins/one/data.json"), '{"user":"settings"}');

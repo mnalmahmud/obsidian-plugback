@@ -27,9 +27,7 @@ export default tseslint.config(
 			},
 		},
 		rules: {
-			// Plugback has no configurable settings to index; the tab renders published status snapshots and supports Obsidian >= 1.8.7.
-			"obsidianmd/settings-tab/prefer-setting-definitions": "off",
-			// `setWarning()` and `display()` are the supported APIs for minAppVersion 1.8.7 (replacements require 1.13.0).
+			// `display()` renders the settings tab on Obsidian versions before 1.13.0.
 			"@typescript-eslint/no-deprecated": "off",
 			"@typescript-eslint/no-unused-vars": [
 				"error",

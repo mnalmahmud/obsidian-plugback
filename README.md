@@ -1,36 +1,35 @@
 # Plugback
 
-Plugback synchronizes installed Obsidian community plugins and themes across devices without tracking their downloaded files in Git.
+Sync Obsidian community plugins and themes across devices without committing downloaded code to Git.
 
-## How it works
+Plugback records which plugins and themes to install in `.obsidian/plugins/plugback/data.json`. Git or your vault sync tool carries that file between devices. Plugback installs and removes extensions to match it.
 
-Plugback records which community plugins and themes to sync in `.obsidian/plugins/plugback/data.json`. Installing or removing a plugin or theme in Obsidian updates this file automatically.
+Requires Obsidian **1.8.7 or newer**.
+
+## Setup
 
 ### First device
-1. Install and enable Plugback.
-2. Plugback automatically creates, maintains, and enables **Plugback Seed** (`.obsidian/plugins/plugback-seed/`).
-3. Commit and push your vault. Git synchronizes the seed, your settings, and `data.json`.
+
+1. Build Plugback using the [development instructions](#development).
+2. Copy or symlink `main.js`, `manifest.json`, and `styles.css` into `.obsidian/plugins/plugback/` in your vault.
+3. Add the [Git ignore rules](#git-setup) below, then enable Plugback in Obsidian.
+4. Commit and push your vault, including your Obsidian settings and `data.json`.
+
+If `data.json` does not exist, Plugback creates it from this device's installed community plugins and themes.
+
+Plugback also creates and enables **Plugback Seed** in `.obsidian/plugins/plugback-seed/`. The seed is a small, minified loader that downloads Plugback when its code is missing. Automatic setup on another device requires a published Plugback release on GitHub.
 
 ### Additional devices
-1. Clone or sync the vault.
-2. Enable community plugins in Obsidian settings.
-3. Obsidian loads Plugback Seed, which downloads and enables Plugback if it is missing.
-4. Plugback installs your tracked community plugins and themes automatically.
 
-## Network use
+1. Clone or sync the vault completely before opening it in Obsidian.
+2. Enable community plugins if Obsidian asks.
+3. Plugback Seed downloads and enables Plugback. Plugback then installs the plugins and themes recorded in `data.json`.
 
-Plugback uses the network to query official community directories and download community plugins and themes. Synchronization of the shared data file (`data.json`) between devices is handled separately by your sync or Git tool. It makes automatic HTTPS requests to GitHub for:
-
-- **Community directories**: Fetching Obsidian's official lists of community plugins and themes to verify directory membership.
-- **Extension metadata and compatibility**: Fetching public manifests and version compatibility information from official plugin and theme repositories on `raw.githubusercontent.com` and `github.com`.
-- **Installation**: Delegating to Obsidian's built-in plugin and theme managers to download missing community extensions from their GitHub repositories.
-- **Plugback bootstrap**: Plugback Seed checks the Plugback GitHub release and installs Plugback when it is missing or incomplete.
-
-These requests check directory membership, compatibility, and install missing extensions.
+An existing `data.json` determines what gets installed, including on a new device. Community extensions installed locally but absent from that file are removed.
 
 ## Git setup
 
-Add the following to your vault's `.gitignore`:
+Add these rules to your vault's `.gitignore`:
 
 ```gitignore
 .obsidian/plugins/*/*
@@ -40,47 +39,57 @@ Add the following to your vault's `.gitignore`:
 .obsidian/themes/*
 ```
 
-With these rules:
-- Git tracks each plugin's settings (`data.json`) and the files in `plugback-seed/`. The seed’s `main.js` is minified.
-- Git ignores downloaded plugin code and theme files.
-- Plugback Seed downloads Plugback when needed. Plugback keeps the seed updated and excludes it from sync.
+Git keeps plugin settings, Plugback's `data.json`, and the seed's files. Downloaded plugin code and theme files are ignored. Your other Obsidian settings, including enabled plugins and the selected theme, should remain tracked.
 
-Unlisted plugins and themes (whose IDs or names are not registered in Obsidian's official community directory, such as custom plugins, BRAT installations, or forks with custom IDs) are unmanaged: Plugback ignores them and never uninstalls them. If an extension shares an official community directory ID or theme name, it is treated as managed by Plugback. If a listed extension's files are modified locally and that extension is subsequently removed from `data.json`, Plugback manages it via Obsidian's uninstaller. To protect custom extensions or forks from uninstallation, give them an unlisted custom ID or name. To track an unlisted local plugin or theme in Git, unignore its folder (for example, `!.obsidian/plugins/my-plugin/*`).
+Use your vault's configuration folder in place of `.obsidian` if you changed it. Ignore rules do not untrack files already committed to Git.
 
-## Synchronization and recovery
+## Sync behavior
 
-Local install/remove intent is stored on each device and replayed after a restart. Updates to `data.json` are saved through Obsidian's atomic read-modify-write API. Invalid JSON, unresolved merge conflicts, and missing data on an initialized device stop synchronization.
+- Installing or removing a community plugin or theme in Obsidian updates `data.json`.
+- Existing complete installations keep their versions. Plugback does not synchronize versions or update installed extensions.
+- Enabled plugins and the selected theme follow Obsidian's settings.
+- Empty plugin and theme arrays in `data.json` remove all managed extensions.
+- Plugback and Plugback Seed are excluded from extension sync.
 
-Git or your sync tool still handles concurrent edits between devices. Resolve its conflicts before checking again. Finish syncing a cloned vault before first startup. Plugback follows an existing valid `data.json`, including on a new device: missing extensions are installed and managed local extras are removed. Empty plugin and theme arrays remove all managed extensions.
+Plugback manages extensions by their identity in Obsidian's community directories: plugin ID or theme name. Unlisted plugins and themes are left alone. A fork or locally modified extension that uses an official ID or name is still managed. Use a custom, unlisted identity to keep it outside Plugback's control.
 
-Plugback synchronizes installation presence, not versions. Complete existing installations keep their versions; plugin enabled settings and the active theme remain controlled by Obsidian's settings.
+To keep an unlisted extension in Git, unignore its folder, for example `!.obsidian/plugins/my-plugin/*`.
 
-## Combining independently configured devices
+### Combining existing setups
 
-Select **Add local extensions** in Plugback settings to include this device's installed community plugins and themes in sync. Existing entries in `data.json` are kept; unlisted extensions remain unmanaged. Commit and sync the updated file with Git.
+For independently configured devices, initialize Plugback on each before exchanging their `data.json` files, then merge those files with Git.
 
-At startup, Plugback follows `data.json`. If the file does not exist on a new device, Plugback creates it from that device’s installed community extensions.
+The **Add** button under **Add local extensions** includes this device's installed community plugins and themes in sync while keeping existing entries. Use it before bringing in another device's `data.json`; once that file arrives, ordinary sync follows its contents and removes managed local extras.
+
+### Recovery
+
+Pending local installs and removals are saved on the device and retried after a restart. Invalid JSON, unresolved merge conflicts, or a missing `data.json` on an already initialized device stop sync.
+
+Resolve conflicts or restore the file with your sync tool, then select **Check now** in Plugback settings. Git merges text, so concurrent edits to the JSON arrays can still require a manual merge.
+
+## Network use
+
+Plugback fetches community directories and extension metadata from `raw.githubusercontent.com` and `github.com`. Downloads use Obsidian's plugin and theme installers. Plugback Seed downloads Plugback from its GitHub releases.
 
 ## Development
 
-Use Node.js 26 or newer and pnpm. CI uses Node.js 26 and pnpm 10.
+Use **Node.js 26 or newer** and **pnpm**. CI uses pnpm 10.
 
-Install dependencies from the committed lockfile:
-
-```bash
+```sh
 pnpm install --frozen-lockfile
+pnpm run build
 ```
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm run dev` | Watch source files and rebuild `main.js` during development |
-| `pnpm run build` | Typecheck and create the production `main.js` bundle |
-| `pnpm run check` | Check release metadata, types, lint, production bundling, and tests |
-| `pnpm run test` | Rebuild the production bundle and run the tests |
+| `pnpm run dev` | Watch TypeScript sources and rebuild `main.js` |
+| `pnpm run build` | Typecheck and build for production |
+| `pnpm run check` | Check metadata, types, lint, build, and tests |
+| `pnpm run test` | Build and run the tests |
 
-For manual testing, build the project and copy or symlink `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/plugins/plugback/` directory, then enable or reload Plugback in Obsidian. Adjust the path if your vault uses a different configuration directory.
+`seed/main.js` is readable source. The build embeds a minified copy in Plugback, which writes it into the vault. Restart the watcher after changing seed sources or manifests.
 
-The six files in `src/` cover startup (`main.ts`), synchronization (`core.ts`), data and storage (`data.ts`), Obsidian integration (`host.ts`), release lookup (`registry.ts`), and settings (`ui.ts`). Tests follow the same layout. `seed/main.js` is readable source; the build minifies it before embedding it in Plugback.
+For manual testing, install the build into a test vault using the setup steps above, then reload Plugback in Obsidian.
 
 ## License
 

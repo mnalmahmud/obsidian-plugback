@@ -49,7 +49,7 @@ class PlugbackSeed extends Plugin {
 		if (await adapter.exists(manifestPath)) {
 			existing = JSON.parse(await adapter.read(manifestPath));
 			if (!this.#valid(existing)) throw new Error("Invalid Plugback manifest.");
-			installed = (!this.#pending || existing.version === this.#pending.version) && await adapter.exists(mainPath) && !!(await adapter.read(mainPath)).trim();
+			installed = (!this.#pending || existing.version === this.#pending.version) && requireApiVersion(existing.minAppVersion) && await adapter.exists(mainPath) && !!(await adapter.read(mainPath)).trim();
 		}
 		if (!this.#alive) return;
 		if (installed && !this.#pending) {

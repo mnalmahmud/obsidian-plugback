@@ -548,3 +548,50 @@ void test("new local changes supersede an unread journal entry after storage rec
 	assert.equal(f.device.sequence, 11);
 	assert.equal(f.device.pending.length, 0);
 });
+
+void test("repairs and sync changes have separate success counts", async () => {
+	const f = fixture();
+	f.plugins.delete("p1");
+	f.data = createData(["p1", "p2"], ["Minimal"], "plugback");
+	const prepare = f.services.extensions.prepare.bind(f.services.extensions);
+	f.services.extensions.prepare = async action => {
+		const prepared = await prepare(action);
+		return "run" in prepared ? { ...prepared, repair: action.id !== "p2" } : prepared;
+	};
+	await f.core().check();
+	assert.deepEqual(f.notifications, ["Plugback synchronized 1 extension.", "Plugback repaired 2 installations."]);
+});
+
+void test("a failed repair does not produce a success notice", async () => {
+	const f = fixture();
+	f.plugins.delete("p1");
+	const prepare = f.services.extensions.prepare.bind(f.services.extensions);
+	f.services.extensions.prepare = async action => {
+		const prepared = await prepare(action);
+		return "run" in prepared ? { ...prepared, repair: true } : prepared;
+	};
+	f.hooks.run = () => { throw new Error("Repair failed"); };
+	const core = f.core();
+	await core.check();
+	assert.equal(core.snapshot.issues.length, 1);
+	assert.deepEqual(f.notifications, []);
+	f.hooks.run = null;
+	await core.check();
+	assert.deepEqual(f.notifications, ["Plugback repaired 1 installation."]);
+});
+
+void test("activation failure preserves the latest inventory and clears repaired operation errors", async () => {
+	const f = fixture();
+	f.data = createData(["p1", "p2"], [], "plugback");
+	f.hooks.run = () => { throw new Error("Download failed"); };
+	const core = f.core();
+	await core.check();
+	assert.equal(core.snapshot.issues.length, 1);
+	f.hooks.run = null;
+	f.services.activate = () => Promise.reject(new Error("Enable failed"));
+	await core.check();
+	assert.equal(core.snapshot.phase, "error");
+	assert.equal(core.snapshot.error?.code, "operation");
+	assert.equal(core.snapshot.installed?.plugins.has("p2"), true);
+	assert.deepEqual(core.snapshot.issues, []);
+});

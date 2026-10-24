@@ -273,6 +273,12 @@ export class Inspector {
 	async has(kind: Kind, id: string): Promise<boolean> {
 		return await this.manifest(kind, id) !== null;
 	}
+	async hasFiles(kind: Kind, id: string): Promise<boolean> {
+		if (!this.valid(kind, id)) return false;
+		const folder = `${this.directory(kind)}/${id}`;
+		return await this.files.exists(`${folder}/manifest.json`) ||
+			await this.files.exists(`${folder}/${kind === "plugin" ? "main.js" : "theme.css"}`);
+	}
 	async list(kind: Kind): Promise<Map<string, string>> {
 		const dir = this.directory(kind);
 		if (!await this.files.exists(dir)) {
@@ -334,11 +340,7 @@ export class ObsidianExtensions implements Extensions {
 	has(action: Action): Promise<boolean> {
 		return this.inspector.has(action.kind, action.id);
 	}
-	async prepare(action: Action): Promise<{
-		run: () => Promise<void>;
-	} | {
-		skip: string;
-	}> {
+	async prepare(action: Action): ReturnType<Extensions["prepare"]> {
 		if (!this.inspector.valid(action.kind, action.id)) {
 			return { skip: "Invalid or protected extension." };
 		}
@@ -357,6 +359,7 @@ export class ObsidianExtensions implements Extensions {
 				return { skip: release.reason };
 			}
 			return {
+				repair: await this.inspector.hasFiles(action.kind, action.id),
 				run: async () => {
 					await this.pluginHook.runManaged(
 						action.id,
@@ -384,6 +387,7 @@ export class ObsidianExtensions implements Extensions {
 			return { skip: release.reason };
 		}
 		return {
+			repair: await this.inspector.hasFiles(action.kind, action.id),
 			run: () => this.themeHook.runManaged(
 				action.id,
 				() => this.themes.installTheme({

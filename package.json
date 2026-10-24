@@ -2,7 +2,7 @@
   "name": "obsidian-plugback",
   "version": "1.0.0",
   "private": true,
-  "description": "Synchronize installed Obsidian community plugins and themes across devices without storing downloaded files in Git.",
+  "description": "Sync community plugins and themes across devices without tracking downloaded code in Git.",
   "license": "MIT",
   "scripts": {
     "dev": "node esbuild.config.mjs",

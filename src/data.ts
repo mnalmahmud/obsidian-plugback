@@ -177,6 +177,7 @@ export interface DeviceStore {
 export interface Extensions {
 	scan(pending: readonly Intent[]): Promise<Installed>;
 	prepare(action: Action): Promise<{
+		repair?: boolean;
 		run: () => Promise<void>;
 	} | {
 		skip: string;

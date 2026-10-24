@@ -236,6 +236,22 @@ void test("native adapter prepares without mutation and delegates runnable insta
 	]);
 });
 
+void test("repair classification includes leftover installation files but excludes settings-only folders", async () => {
+	for (const [kind, id] of [["plugin", "one"], ["theme", "Minimal"]] as const) {
+		const f = hostFixture();
+		const folder = `.config/${kind === "plugin" ? "plugins" : "themes"}/${id}`;
+		f.files.content.set(`${folder}/data.json`, "{}");
+		const fresh = await f.extensions.prepare({ kind, id, present: true });
+		assert.ok("run" in fresh);
+		assert.equal(fresh.repair, false);
+		f.files.put(kind, id);
+		f.files.content.set(`${folder}/${kind === "plugin" ? "main.js" : "theme.css"}`, "");
+		const repair = await f.extensions.prepare({ kind, id, present: true });
+		assert.ok("run" in repair);
+		assert.equal(repair.repair, true);
+	}
+});
+
 void test("native adapter refuses unlisted and protected removals", async () => {
 	const f = hostFixture();
 	for (const id of ["plugback", "plugback-seed", "custom", "../bad"]) {
@@ -644,18 +660,20 @@ void test("standalone seed repairs the recorded version without fetching the lat
 	assert.equal(requests, 0);
 });
 
-void test("standalone seed retries the selected release after an install writes the wrong version", async t => {
-	const f = seedFixture();
-	const install = t.mock.method(f.manager, "installPlugin", async () => {
-		f.files.put("plugin", "plugback");
-		f.files.content.set(".config/plugins/plugback/manifest.json", JSON.stringify({ ...f.release, version: "9.0.0" }));
-	});
-	await f.seed.check();
-	assert.equal(f.calls.length, 0);
-	install.mock.restore();
-	await f.seed.check();
-	assert.deepEqual(f.versions, ["1.0.0"]);
-	assert.deepEqual(f.calls, ["install", "enable"]);
+void test("standalone seed retries the selected release after incompatible installation metadata", async t => {
+	for (const invalid of [{ version: "9.0.0" }, { minAppVersion: "99.0.0" }]) {
+		const f = seedFixture();
+		const install = t.mock.method(f.manager, "installPlugin", async () => {
+			f.files.put("plugin", "plugback");
+			f.files.content.set(".config/plugins/plugback/manifest.json", JSON.stringify({ ...f.release, ...invalid }));
+		});
+		await f.seed.check();
+		assert.equal(f.calls.length, 0);
+		install.mock.restore();
+		await f.seed.check();
+		assert.deepEqual(f.versions, ["1.0.0"]);
+		assert.deepEqual(f.calls, ["install", "enable"]);
+	}
 });
 
 void test("standalone seed leaves an existing complete installation disabled", async () => {

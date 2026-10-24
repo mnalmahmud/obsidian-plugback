@@ -1,3 +1,8 @@
+.setting-item.plugback-settings-host {
+	display: block;
+	padding: 0;
+	border: 0;
+}
 .plugback-settings {
 	--plugback-border: var(--background-modifier-border);
 }
@@ -46,7 +51,7 @@
 .plugback-settings .plugback-extension-label { min-width: 0; overflow-wrap: anywhere; }
 .plugback-settings .plugback-extension-label small {
 	display: block;
-	color: var(--text-faint);
+	color: var(--text-muted);
 	margin-top: var(--size-2-1);
 }
 .plugback-settings .plugback-extension-state {
@@ -57,4 +62,5 @@
 }
 .plugback-settings .plugback-empty { color: var(--text-muted); font-size: var(--font-ui-small); }
 .plugback-settings .plugback-issues { margin-top: var(--size-4-5); }
-.plugback-settings .plugback-issues .setting-item-description { overflow-wrap: anywhere; }
+.plugback-settings .setting-item-description,
+.plugback-settings .plugback-issues .setting-item-name { overflow-wrap: anywhere; }
