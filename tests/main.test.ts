@@ -22,13 +22,20 @@ function pluginFixture(installed = true) {
 	const calls: string[] = [];
 	const notices: string[] = [];
 	let cancellations = 0;
-	let ready = () => {
-	};
+	let ready = () => {};
 	const local = new Map<string, unknown>();
-	files.content.set(".custom/plugins/plugback/data.json", JSON.stringify({
-		schemaVersion: 1, plugins: ["one"], themes: []
-	}));
-	files.content.set(".custom/plugins/plugback-seed/manifest.json", readFileSync("seed/manifest.json", "utf8"));
+	files.content.set(
+		".custom/plugins/plugback/data.json",
+		JSON.stringify({
+			schemaVersion: 1,
+			plugins: ["one"],
+			themes: [],
+		}),
+	);
+	files.content.set(
+		".custom/plugins/plugback-seed/manifest.json",
+		readFileSync("seed/manifest.json", "utf8"),
+	);
 	files.content.set(".custom/plugins/plugback-seed/main.js", readFileSync("seed/main.js", "utf8"));
 	files.content.set(".custom/community-plugins.json", '["plugback", "plugback-seed", "one"]');
 	files.content.set(".custom/plugins/one/data.json", '{"user":"settings"}');
@@ -39,9 +46,13 @@ function pluginFixture(installed = true) {
 	const manager = {
 		plugins: loaded,
 		manifests: {},
-		installPlugin: async (_repo: string, _version: string, manifest: {
-			id: string;
-		}) => {
+		installPlugin: async (
+			_repo: string,
+			_version: string,
+			manifest: {
+				id: string;
+			},
+		) => {
 			calls.push(`install:${manifest.id}`);
 			files.put("plugin", manifest.id, ".custom");
 		},
@@ -53,28 +64,25 @@ function pluginFixture(installed = true) {
 			calls.push(`enable:${id}`);
 			loaded[id] = {};
 		},
-		enablePluginAndSave: async () => {
-		},
-		loadManifests: async () => {
-		},
+		enablePluginAndSave: async () => {},
+		loadManifests: async () => {},
 	};
 	const app = {
 		vault: { configDir: ".custom", adapter: files },
 		plugins: manager,
 		customCss: {
-			installTheme: async () => {
-			}, removeTheme: async () => {
-			}
+			installTheme: async () => {},
+			removeTheme: async () => {},
 		},
 		workspace: {
 			onLayoutReady(callback: () => void) {
 				ready = callback;
-			}
+			},
 		},
 		loadLocalStorage: (key: string) => local.get(key),
 		saveLocalStorage: (key: string, value: unknown) => {
 			local.set(key, value);
-		}
+		},
 	};
 	class Plugin {
 		app: unknown;
@@ -83,16 +91,20 @@ function pluginFixture(installed = true) {
 			this.app = a;
 			this.manifest = m;
 		}
-		registerDomEvent(): void {
-		}
+		registerDomEvent(): void {}
 		addSettingTab(): void {}
 	}
 	const manifest = {
-		id: "one", name: "One", version: "1.0.0", minAppVersion: "1.0.0"
+		id: "one",
+		name: "One",
+		version: "1.0.0",
+		minAppVersion: "1.0.0",
 	};
 	const network = new Map<string, unknown>([
-		[PLUGINS_REGISTRY_URL, [{ id: "one", repo: "owner/one" }]], [THEMES_REGISTRY_URL, [{ name: "Minimal", repo: "owner/theme" }]],
-		["https://raw.githubusercontent.com/owner/one/HEAD/manifest.json", manifest], ["https://github.com/owner/one/releases/download/1.0.0/manifest.json", manifest],
+		[PLUGINS_REGISTRY_URL, [{ id: "one", repo: "owner/one" }]],
+		[THEMES_REGISTRY_URL, [{ name: "Minimal", repo: "owner/theme" }]],
+		["https://raw.githubusercontent.com/owner/one/HEAD/manifest.json", manifest],
+		["https://github.com/owner/one/releases/download/1.0.0/manifest.json", manifest],
 	]);
 	const mod: {
 		exports: unknown;
@@ -103,35 +115,39 @@ function pluginFixture(installed = true) {
 		window: {},
 		document: { visibilityState: "visible" },
 		console: {
-			error: () => {
-			}, warn: () => {
-			}
+			error: () => {},
+			warn: () => {},
 		},
 		require: () => ({
 			Plugin,
-			PluginSettingTab: class {
-			},
+			PluginSettingTab: class {},
 			Notice: class {
-				constructor(message: string) { notices.push(message); }
+				constructor(message: string) {
+					notices.push(message);
+				}
 			},
 			Platform: { isMobile: false },
 			normalizePath: (path: string) => path,
 			requireApiVersion: () => true,
-			requestUrl: ({ url }: {
-				url: string;
-			}) => Promise.resolve({ status: network.has(url) ? 200 : 404, json: network.get(url) }),
-			debounce: (fn: () => void) => Object.assign(fn, {
-				cancel: () => {
-					cancellations++;
-				}
-			}),
+			requestUrl: ({ url }: { url: string }) =>
+				Promise.resolve({ status: network.has(url) ? 200 : 404, json: network.get(url) }),
+			debounce: (fn: () => void) =>
+				Object.assign(fn, {
+					cancel: () => {
+						cancellations++;
+					},
+				}),
 		}),
 	});
-	const Constructor = (mod.exports as {
-		default: new (app: unknown, manifest: unknown) => Runtime;
-	}).default;
+	const Constructor = (
+		mod.exports as {
+			default: new (app: unknown, manifest: unknown) => Runtime;
+		}
+	).default;
 	const plugin = new Constructor(app, {
-		id: "plugback", name: "Plugback", dir: ".custom/plugins/plugback"
+		id: "plugback",
+		name: "Plugback",
+		dir: ".custom/plugins/plugback",
 	});
 	return {
 		plugin,
@@ -142,7 +158,7 @@ function pluginFixture(installed = true) {
 		manager,
 		get cancellations() {
 			return cancellations;
-		}
+		},
 	};
 }
 void test("production bundle starts, installs missing bytes, preserves settings, and restores activation", async () => {
@@ -183,7 +199,7 @@ void test("native removal is observed and automatically reconciled by the assemb
 	f.ready();
 	await f.plugin.check();
 	const completed = deferred<void>();
-	const off = f.plugin.core.subscribe(snapshot => {
+	const off = f.plugin.core.subscribe((snapshot) => {
 		if (snapshot.phase === "idle" && snapshot.data?.plugins.length === 0) {
 			completed.resolve();
 		}
@@ -191,7 +207,14 @@ void test("native removal is observed and automatically reconciled by the assemb
 	await f.manager.uninstallPlugin("one");
 	await completed.promise;
 	off();
-	assert.deepEqual((JSON.parse(f.files.content.get(".custom/plugins/plugback/data.json")!) as { plugins: string[] }).plugins, []);
+	assert.deepEqual(
+		(
+			JSON.parse(f.files.content.get(".custom/plugins/plugback/data.json")!) as {
+				plugins: string[];
+			}
+		).plugins,
+		[],
+	);
 	f.plugin.onunload();
 });
 

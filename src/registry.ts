@@ -1,7 +1,9 @@
 import { isValidPluginId, isValidThemeName, SyncError } from "./data.ts";
 
-export const PLUGINS_REGISTRY_URL = "https://raw.githubusercontent.com/obsidianmd/obsidian-releases/HEAD/community-plugins.json";
-export const THEMES_REGISTRY_URL = "https://raw.githubusercontent.com/obsidianmd/obsidian-releases/HEAD/community-css-themes.json";
+export const PLUGINS_REGISTRY_URL =
+	"https://raw.githubusercontent.com/obsidianmd/obsidian-releases/HEAD/community-plugins.json";
+export const THEMES_REGISTRY_URL =
+	"https://raw.githubusercontent.com/obsidianmd/obsidian-releases/HEAD/community-css-themes.json";
 const TTL = 30 * 60 * 1000;
 export interface RegistryDeps {
 	fetchJson(url: string): Promise<unknown>;
@@ -19,7 +21,10 @@ export function parseSemver(input: string): Semver | null {
 	if (typeof input !== "string" || input.length > 64) {
 		return null;
 	}
-	const match = /^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(input);
+	const match =
+		/^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(
+			input,
+		);
 	if (!match) {
 		return null;
 	}
@@ -31,7 +36,7 @@ export function parseSemver(input: string): Semver | null {
 		major: numbers[0]!,
 		minor: numbers[1]!,
 		patch: numbers[2]!,
-		prerelease: match[4] ? match[4].split(".").map(v => /^\d+$/.test(v) ? Number(v) : v) : null
+		prerelease: match[4] ? match[4].split(".").map((v) => (/^\d+$/.test(v) ? Number(v) : v)) : null,
 	};
 }
 export function compareSemver(a: Semver, b: Semver): number {
@@ -72,12 +77,18 @@ export function compareSemver(a: Semver, b: Semver): number {
 	return 0;
 }
 export function isValidRepo(value: unknown): value is string {
-	return typeof value === "string" && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value) &&
-		value.split("/").every(part => part !== "." && part !== "..");
+	return (
+		typeof value === "string" &&
+		/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value) &&
+		value.split("/").every((part) => part !== "." && part !== "..")
+	);
 }
 function branch(value: unknown): string | undefined {
-	return typeof value === "string" && /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(value) &&
-		value.split("/").every(p => p !== "." && p !== "..") ? value : undefined;
+	return typeof value === "string" &&
+		/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(value) &&
+		value.split("/").every((p) => p !== "." && p !== "..")
+		? value
+		: undefined;
 }
 interface Manifest {
 	version: string;
@@ -95,40 +106,50 @@ interface ThemeEntry {
 	branch?: string;
 	legacy: boolean;
 }
-export type PluginResolution = {
-	ok: true;
-	repo: string;
-	manifest: Manifest & {
-		id: string;
-	};
-	installVersion: string;
-} | {
-	ok: false;
-	reason: string;
-};
-export type ThemeResolution = {
-	ok: true;
-	name: string;
-	repo: string;
-	author: string;
-	branch?: string;
-	version: string;
-	manifest: Manifest;
-} | {
-	ok: false;
-	reason: string;
-};
+export type PluginResolution =
+	| {
+			ok: true;
+			repo: string;
+			manifest: Manifest & {
+				id: string;
+			};
+			installVersion: string;
+	  }
+	| {
+			ok: false;
+			reason: string;
+	  };
+export type ThemeResolution =
+	| {
+			ok: true;
+			name: string;
+			repo: string;
+			author: string;
+			branch?: string;
+			version: string;
+			manifest: Manifest;
+	  }
+	| {
+			ok: false;
+			reason: string;
+	  };
 function manifest(raw: unknown, kind: "plugin" | "theme", id: string): Manifest | null {
 	if (!raw || typeof raw !== "object") {
 		return null;
 	}
 	const value = raw as Record<string, unknown>;
-	if (typeof value.version !== "string" || !parseSemver(value.version) ||
-		!/^[0-9A-Za-z.+-]{1,64}$/.test(value.version)) {
+	if (
+		typeof value.version !== "string" ||
+		!parseSemver(value.version) ||
+		!/^[0-9A-Za-z.+-]{1,64}$/.test(value.version)
+	) {
 		return null;
 	}
-	if (typeof value.minAppVersion !== "string" || !/^\d+(?:\.\d+){0,3}$/.test(value.minAppVersion) ||
-		typeof value.name !== "string") {
+	if (
+		typeof value.minAppVersion !== "string" ||
+		!/^\d+(?:\.\d+){0,3}$/.test(value.minAppVersion) ||
+		typeof value.name !== "string"
+	) {
 		return null;
 	}
 	if (kind === "plugin" ? value.id !== id : value.name !== id) {
@@ -165,72 +186,84 @@ export class Registry {
 		this.cache.clear();
 		this.inflight.clear();
 	}
-	private directory(url: string, valid: (entry: Record<string, unknown>) => string | null, refresh = false): Promise<Map<string, Record<string, unknown>>> {
+	private directory(
+		url: string,
+		valid: (entry: Record<string, unknown>) => string | null,
+		refresh = false,
+	): Promise<Map<string, Record<string, unknown>>> {
 		const cache = this.cache.get(url);
 		if (!refresh && cache && this.deps.now() - cache.at < TTL) {
 			return Promise.resolve(new Map(cache.entries));
 		}
 		const active = this.inflight.get(url);
 		if (active) {
-			return active.then(entries => new Map(entries));
+			return active.then((entries) => new Map(entries));
 		}
 		const epoch = this.epoch;
-		const job = this.deps.fetchJson(url).then(raw => {
-			if (!Array.isArray(raw)) {
-				throw new SyncError("directory", "Community directory returned an invalid response.");
-			}
-			const entries = new Map<string, Record<string, unknown>>();
-			for (const item of raw as unknown[]) {
-				if (!item || typeof item !== "object") {
-					continue;
+		const job = this.deps
+			.fetchJson(url)
+			.then((raw) => {
+				if (!Array.isArray(raw)) {
+					throw new SyncError("directory", "Community directory returned an invalid response.");
 				}
-				const entry = item as Record<string, unknown>;
-				const id = valid(entry);
-				if (id) {
-					entries.set(id, entry);
+				const entries = new Map<string, Record<string, unknown>>();
+				for (const item of raw as unknown[]) {
+					if (!item || typeof item !== "object") {
+						continue;
+					}
+					const entry = item as Record<string, unknown>;
+					const id = valid(entry);
+					if (id) {
+						entries.set(id, entry);
+					}
 				}
-			}
-			if (!entries.size) {
-				throw new SyncError("directory", "Community directory contained no valid entries.");
-			}
-			if (this.epoch === epoch) {
-				this.cache.set(url, { at: this.deps.now(), entries });
-			}
-			return entries;
-		}).finally(() => {
-			if (this.inflight.get(url) === job) {
-				this.inflight.delete(url);
-			}
-		});
+				if (!entries.size) {
+					throw new SyncError("directory", "Community directory contained no valid entries.");
+				}
+				if (this.epoch === epoch) {
+					this.cache.set(url, { at: this.deps.now(), entries });
+				}
+				return entries;
+			})
+			.finally(() => {
+				if (this.inflight.get(url) === job) {
+					this.inflight.delete(url);
+				}
+			});
 		this.inflight.set(url, job);
-		return job.then(entries => new Map(entries));
+		return job.then((entries) => new Map(entries));
 	}
 	private async plugins(refresh = false): Promise<Map<string, string>> {
-		const entries = await this.directory(PLUGINS_REGISTRY_URL, e => isValidPluginId(e.id) && isValidRepo(e.repo) ? e.id : null, refresh);
+		const entries = await this.directory(
+			PLUGINS_REGISTRY_URL,
+			(e) => (isValidPluginId(e.id) && isValidRepo(e.repo) ? e.id : null),
+			refresh,
+		);
 		return new Map([...entries].map(([id, e]) => [id, e.repo as string]));
 	}
 	private async themes(refresh = false): Promise<Map<string, ThemeEntry>> {
 		const entries = await this.directory(
 			THEMES_REGISTRY_URL,
-			e => isValidThemeName(e.name) && isValidRepo(e.repo) ? e.name : null,
-			refresh
+			(e) => (isValidThemeName(e.name) && isValidRepo(e.repo) ? e.name : null),
+			refresh,
 		);
-		return new Map([...entries].map(([name, e]) => [name, {
-			name,
-			repo: e.repo as string,
-			author: typeof e.author === "string" ? e.author : "",
-			branch: branch(e.branch),
-			legacy: e.legacy === true
-		}]));
+		return new Map(
+			[...entries].map(([name, e]) => [
+				name,
+				{
+					name,
+					repo: e.repo as string,
+					author: typeof e.author === "string" ? e.author : "",
+					branch: branch(e.branch),
+					legacy: e.legacy === true,
+				},
+			]),
+		);
 	}
-	async getOfficialPluginIds(options?: {
-		refresh?: boolean;
-	}): Promise<Set<string>> {
+	async getOfficialPluginIds(options?: { refresh?: boolean }): Promise<Set<string>> {
 		return new Set((await this.plugins(options?.refresh)).keys());
 	}
-	async getOfficialThemeNames(options?: {
-		refresh?: boolean;
-	}): Promise<Set<string>> {
+	async getOfficialThemeNames(options?: { refresh?: boolean }): Promise<Set<string>> {
 		return new Set((await this.themes(options?.refresh)).keys());
 	}
 	async isOfficialPlugin(id: string): Promise<boolean> {
@@ -240,45 +273,63 @@ export class Registry {
 		return (await this.themes()).has(id);
 	}
 	private compatible(value: Manifest): boolean {
-		return this.deps.supportsVersion(value.minAppVersion) && !(this.deps.isMobile && value.isDesktopOnly);
+		return (
+			this.deps.supportsVersion(value.minAppVersion) && !(this.deps.isMobile && value.isDesktopOnly)
+		);
 	}
-	private async release(repo: string, version: string, kind: "plugin" | "theme", id: string): Promise<{
+	private async release(
+		repo: string,
+		version: string,
+		kind: "plugin" | "theme",
+		id: string,
+	): Promise<{
 		manifest: Manifest;
 		tag: string;
 	} | null> {
 		for (const tag of tags(version)) {
 			const urls = [`https://github.com/${repo}/releases/download/${tag}/manifest.json`];
-			if (kind === "theme") urls.push(`https://raw.githubusercontent.com/${repo}/${tag}/manifest.json`);
+			if (kind === "theme")
+				urls.push(`https://raw.githubusercontent.com/${repo}/${tag}/manifest.json`);
 			for (const url of urls) {
 				try {
 					const value = manifest(await this.deps.fetchJson(url), kind, id);
 					if (value && clean(value.version) === clean(version)) {
 						return { manifest: value, tag };
 					}
-				}
-				catch {
+				} catch {
 					// Try the alternate tag or distribution URL.
 				}
 			}
 		}
 		return null;
 	}
-	private async older(repo: string, ref: string, kind: "plugin" | "theme", id: string): Promise<{
+	private async older(
+		repo: string,
+		ref: string,
+		kind: "plugin" | "theme",
+		id: string,
+	): Promise<{
 		manifest: Manifest;
 		tag: string;
 	} | null> {
 		let raw: unknown;
 		try {
-			raw = await this.deps.fetchJson(`https://raw.githubusercontent.com/${repo}/${ref}/versions.json`);
-		}
-		catch {
+			raw = await this.deps.fetchJson(
+				`https://raw.githubusercontent.com/${repo}/${ref}/versions.json`,
+			);
+		} catch {
 			return null;
 		}
 		if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
 			return null;
 		}
-		const versions = Object.entries(raw).filter(([version, min]) => parseSemver(version) && typeof min === "string" && /^\d+(?:\.\d+){0,3}$/.test(min) &&
-			this.deps.supportsVersion(min));
+		const versions = Object.entries(raw).filter(
+			([version, min]) =>
+				parseSemver(version) &&
+				typeof min === "string" &&
+				/^\d+(?:\.\d+){0,3}$/.test(min) &&
+				this.deps.supportsVersion(min),
+		);
 		versions.sort(([a], [b]) => compareSemver(parseSemver(b)!, parseSemver(a)!));
 		for (const [version] of versions) {
 			const result = await this.release(repo, version, kind, id);
@@ -299,7 +350,7 @@ export class Registry {
 		const latest = manifest(
 			await this.deps.fetchJson(`https://raw.githubusercontent.com/${repo}/HEAD/manifest.json`),
 			"plugin",
-			id
+			id,
 		);
 		if (!latest) {
 			return { ok: false, reason: "Published plugin manifest is invalid or has a different ID." };
@@ -309,7 +360,10 @@ export class Registry {
 			selected = await this.older(repo, "HEAD", "plugin", id);
 		}
 		if (!selected) {
-			return { ok: false, reason: "No compatible published plugin release was found for this device." };
+			return {
+				ok: false,
+				reason: "No compatible published plugin release was found for this device.",
+			};
 		}
 		return {
 			ok: true,
@@ -317,7 +371,7 @@ export class Registry {
 			manifest: selected.manifest as Manifest & {
 				id: string;
 			},
-			installVersion: selected.tag
+			installVersion: selected.tag,
 		};
 	}
 	async resolveTheme(name: string): Promise<ThemeResolution> {
@@ -333,9 +387,11 @@ export class Registry {
 		}
 		const ref = entry.branch ?? "HEAD";
 		const latest = manifest(
-			await this.deps.fetchJson(`https://raw.githubusercontent.com/${entry.repo}/${ref}/manifest.json`),
+			await this.deps.fetchJson(
+				`https://raw.githubusercontent.com/${entry.repo}/${ref}/manifest.json`,
+			),
 			"theme",
-			name
+			name,
 		);
 		if (!latest) {
 			return { ok: false, reason: "Published theme manifest is invalid or has a different name." };
@@ -357,7 +413,7 @@ export class Registry {
 			author: entry.author,
 			branch: entry.branch,
 			manifest: selected.manifest,
-			version: selected.tag
+			version: selected.tag,
 		};
 	}
 }

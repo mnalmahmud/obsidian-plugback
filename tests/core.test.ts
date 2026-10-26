@@ -93,7 +93,7 @@ for (const kind of ["plugin", "theme"] as const) {
 		const local = kind === "plugin" ? f.plugins : f.themes;
 		local.set(id, id);
 		const core = f.core();
-		f.hooks.prepare = action => {
+		f.hooks.prepare = (action) => {
 			if (action.id === id) {
 				f.hooks.prepare = null;
 				core.record(kind, id, true);
@@ -250,7 +250,7 @@ void test("published snapshots cannot mutate coordinator state; unsubscribe stop
 	const f = fixture();
 	const core = f.core();
 	let deliveries = 0;
-	const off = core.subscribe(snapshot => {
+	const off = core.subscribe((snapshot) => {
 		deliveries++;
 		snapshot.data?.plugins.push("tampered");
 	});
@@ -295,7 +295,7 @@ void test("sustained changes bound immediate retries and expose waiting status",
 void test("successful checks restore activation; missing sync data blocks activation", async () => {
 	const f = fixture();
 	let activations = 0;
-	f.services.activate = async guard => {
+	f.services.activate = async (guard) => {
 		if (guard()) {
 			activations++;
 		}
@@ -320,7 +320,7 @@ void test("repeated identical failures notify once until successful recovery", a
 	core.record("plugin", "p2", false);
 	f.sharedWriteError = true;
 	await core.check();
-	assert.equal(f.notifications.filter(message => message.includes("Disk full")).length, 2);
+	assert.equal(f.notifications.filter((message) => message.includes("Disk full")).length, 2);
 });
 
 void test("an event after transaction commit but before its promise resolves is retained", async () => {
@@ -352,7 +352,10 @@ void test("Add local extensions merges installed community extensions without re
 	f.data = createData(["remote"], ["Minimal"], "plugback");
 	await f.core().consolidate();
 	assert.deepEqual(f.data, createData(["p1", "p2", "remote"], ["Minimal", "Things"], "plugback"));
-	assert.equal(f.operations.some(action => !action.present), false);
+	assert.equal(
+		f.operations.some((action) => !action.present),
+		false,
+	);
 	assert.equal(f.plugins.has("custom"), true);
 });
 void test("consolidation uses current data and excludes Plugback and its seed", async () => {
@@ -416,7 +419,7 @@ void test("core waits for all native operations to finish before scheduling its 
 	await core.check();
 	const before = f.scans;
 	const completed = deferred<void>();
-	const off = core.subscribe(snapshot => {
+	const off = core.subscribe((snapshot) => {
 		if (snapshot.phase === "idle" && snapshot.data?.plugins.includes("p2")) {
 			completed.resolve();
 		}
@@ -437,9 +440,9 @@ void test("core waits for all native operations to finish before scheduling its 
 void test("stopping the core unsubscribes once and ignores late native events", async () => {
 	const f = fixture();
 	let detached = 0;
-	let listener: Parameters<typeof f.services.observe>[0] = () => { };
+	let listener: Parameters<typeof f.services.observe>[0] = () => {};
 	const observe = f.services.observe.bind(f.services);
-	f.services.observe = callback => {
+	f.services.observe = (callback) => {
 		listener = callback;
 		const off = observe(callback);
 		return () => {
@@ -489,10 +492,11 @@ void test("failed acknowledgement retains the journal for retry after a successf
 	f.plugins.set("p2", "Two");
 	core.record("plugin", "p2", true);
 	const save = f.services.device.write.bind(f.services.device);
-	f.services.device.write = state => {
+	f.services.device.write = (state) => {
 		if (!state.pending.length) {
 			throw new Error("Cannot acknowledge journal");
-		} save(state);
+		}
+		save(state);
 	};
 	await core.check();
 	assert.equal(core.snapshot.phase, "error");
@@ -509,8 +513,9 @@ void test("failed acknowledgement retains the journal for retry after a successf
 void test("local changes during a failed journal read survive recovery alongside older pending changes", async () => {
 	const f = fixture();
 	f.device = {
-		initialized: true, sequence: 7,
-		pending: [{ kind: "theme", id: "Minimal", present: true, sequence: 7 }]
+		initialized: true,
+		sequence: 7,
+		pending: [{ kind: "theme", id: "Minimal", present: true, sequence: 7 }],
 	};
 	f.themes.set("Minimal", "Minimal");
 	f.deviceReadError = true;
@@ -533,8 +538,9 @@ void test("local changes during a failed journal read survive recovery alongside
 void test("new local changes supersede an unread journal entry after storage recovers", async () => {
 	const f = fixture();
 	f.device = {
-		initialized: true, sequence: 10,
-		pending: [{ kind: "plugin", id: "p1", present: false, sequence: 10 }]
+		initialized: true,
+		sequence: 10,
+		pending: [{ kind: "plugin", id: "p1", present: false, sequence: 10 }],
 	};
 	f.deviceReadError = true;
 	const core = f.core();
@@ -554,23 +560,28 @@ void test("repairs and sync changes have separate success counts", async () => {
 	f.plugins.delete("p1");
 	f.data = createData(["p1", "p2"], ["Minimal"], "plugback");
 	const prepare = f.services.extensions.prepare.bind(f.services.extensions);
-	f.services.extensions.prepare = async action => {
+	f.services.extensions.prepare = async (action) => {
 		const prepared = await prepare(action);
 		return "run" in prepared ? { ...prepared, repair: action.id !== "p2" } : prepared;
 	};
 	await f.core().check();
-	assert.deepEqual(f.notifications, ["Plugback synchronized 1 extension.", "Plugback repaired 2 installations."]);
+	assert.deepEqual(f.notifications, [
+		"Plugback synchronized 1 extension.",
+		"Plugback repaired 2 installations.",
+	]);
 });
 
 void test("a failed repair does not produce a success notice", async () => {
 	const f = fixture();
 	f.plugins.delete("p1");
 	const prepare = f.services.extensions.prepare.bind(f.services.extensions);
-	f.services.extensions.prepare = async action => {
+	f.services.extensions.prepare = async (action) => {
 		const prepared = await prepare(action);
 		return "run" in prepared ? { ...prepared, repair: true } : prepared;
 	};
-	f.hooks.run = () => { throw new Error("Repair failed"); };
+	f.hooks.run = () => {
+		throw new Error("Repair failed");
+	};
 	const core = f.core();
 	await core.check();
 	assert.equal(core.snapshot.issues.length, 1);
@@ -583,7 +594,9 @@ void test("a failed repair does not produce a success notice", async () => {
 void test("activation failure preserves the latest inventory and clears repaired operation errors", async () => {
 	const f = fixture();
 	f.data = createData(["p1", "p2"], [], "plugback");
-	f.hooks.run = () => { throw new Error("Download failed"); };
+	f.hooks.run = () => {
+		throw new Error("Download failed");
+	};
 	const core = f.core();
 	await core.check();
 	assert.equal(core.snapshot.issues.length, 1);

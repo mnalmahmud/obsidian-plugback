@@ -42,33 +42,36 @@ export class Core {
 		installed: null,
 		issues: [],
 		error: null,
-		lastChecked: null
+		lastChecked: null,
 	};
 	private readonly services: Services;
 	constructor(services: Services) {
 		this.services = services;
 		try {
 			this.device = services.device.read();
-		}
-		catch (error) {
+		} catch (error) {
 			this.loadFailed = true;
 			this.fail(error);
 		}
-		this.detachNative = services.observe(event => this.onNativeEvent(event));
+		this.detachNative = services.observe((event) => this.onNativeEvent(event));
 	}
 	get snapshot(): Snapshot {
 		const view = this.view;
 		return {
 			...view,
 			initialized: this.device.initialized,
-			data: view.data ? createData(view.data.plugins, view.data.themes, this.services.selfId) : null,
-			installed: view.installed ? {
-				plugins: new Map(view.installed.plugins),
-				themes: new Map(view.installed.themes),
-				managedPlugins: new Set(view.installed.managedPlugins),
-				managedThemes: new Set(view.installed.managedThemes)
-			} : null,
-			issues: view.issues.map(issue => ({ ...issue, action: { ...issue.action } })),
+			data: view.data
+				? createData(view.data.plugins, view.data.themes, this.services.selfId)
+				: null,
+			installed: view.installed
+				? {
+						plugins: new Map(view.installed.plugins),
+						themes: new Map(view.installed.themes),
+						managedPlugins: new Set(view.installed.managedPlugins),
+						managedThemes: new Set(view.installed.managedThemes),
+					}
+				: null,
+			issues: view.issues.map((issue) => ({ ...issue, action: { ...issue.action } })),
 			error: view.error ? { ...view.error } : null,
 		};
 	}
@@ -92,8 +95,7 @@ export class Core {
 		this.generation++;
 	}
 	record(kind: Action["kind"], id: string, present: boolean): void {
-		if (this.stopped ||
-			(kind === "plugin" && (id === this.services.selfId || id === SEED_ID))) {
+		if (this.stopped || (kind === "plugin" && (id === this.services.selfId || id === SEED_ID))) {
 			return;
 		}
 		if (!(kind === "plugin" ? isValidPluginId(id) : isValidThemeName(id))) {
@@ -101,14 +103,16 @@ export class Core {
 		}
 		this.generation++;
 		const intent: Intent = {
-			kind, id, present, sequence: ++this.device.sequence
+			kind,
+			id,
+			present,
+			sequence: ++this.device.sequence,
 		};
-		this.device.pending = [...this.device.pending.filter(i => key(i) !== key(intent)), intent];
+		this.device.pending = [...this.device.pending.filter((i) => key(i) !== key(intent)), intent];
 		this.deviceDirty = true;
 		try {
 			this.persist();
-		}
-		catch (error) {
+		} catch (error) {
 			this.fail(error);
 		}
 		if (this.job) {
@@ -123,9 +127,11 @@ export class Core {
 		this.dirty = true;
 		if (!this.job) {
 			this.publish({ phase: "checking" });
-			this.job = Promise.resolve().then(() => this.drain()).finally(() => {
-				this.job = null;
-			});
+			this.job = Promise.resolve()
+				.then(() => this.drain())
+				.finally(() => {
+					this.job = null;
+				});
 		}
 		return this.job;
 	}
@@ -179,8 +185,7 @@ export class Core {
 				this.persist();
 				this.publish({ phase: "checking", error: null });
 				await this.pass();
-			}
-			catch (error) {
+			} catch (error) {
 				if (error instanceof Interrupted) {
 					continue;
 				}
@@ -194,8 +199,7 @@ export class Core {
 		}
 		if (!this.stopped && this.dirty) {
 			this.publish({ phase: "waiting" });
-		}
-		else if (!this.stopped && this.view.phase === "checking") {
+		} else if (!this.stopped && this.view.phase === "checking") {
 			this.publish({ phase: "idle" });
 		}
 	}
@@ -232,29 +236,40 @@ export class Core {
 		}
 		let installed = await this.scan(guard);
 		if (!data && !this.device.initialized && !this.mergeRequested) {
-			data = await services.shared.update(current => current ?? this.captureInstalled(installed), guard);
+			data = await services.shared.update(
+				(current) => current ?? this.captureInstalled(installed),
+				guard,
+			);
 			this.require(guard);
 		}
 		const pending = [...this.device.pending];
-		const accepted = pending.filter(intent => eligible(intent, installed));
+		const accepted = pending.filter((intent) => eligible(intent, installed));
 		const consolidating = this.mergeRequested;
 		const hadData = data !== null;
 		if (accepted.length || consolidating) {
 			const additions = consolidating ? this.captureInstalled(installed) : null;
-			data = await services.shared.update(current => {
+			data = await services.shared.update((current) => {
 				if (!current && (hadData || this.device.initialized || !consolidating)) {
 					throw new SyncError("missing-data", "data.json disappeared while saving local changes.");
 				}
-				const next = mergeIntents(current ?? createData([], [], services.selfId), accepted, services.selfId);
-				return additions ? createData(
-					[...next.plugins, ...additions.plugins],
-					[...next.themes, ...additions.themes],
+				const next = mergeIntents(
+					current ?? createData([], [], services.selfId),
+					accepted,
 					services.selfId,
-				) : next;
+				);
+				return additions
+					? createData(
+							[...next.plugins, ...additions.plugins],
+							[...next.themes, ...additions.themes],
+							services.selfId,
+						)
+					: next;
 			}, guard);
 			this.require(guard);
 		}
-		const remaining = this.device.pending.filter(i => !pending.some(p => key(p) === key(i) && p.sequence === i.sequence));
+		const remaining = this.device.pending.filter(
+			(i) => !pending.some((p) => key(p) === key(i) && p.sequence === i.sequence),
+		);
 		if (!this.device.initialized || remaining.length !== this.device.pending.length) {
 			const next = { ...this.device, initialized: true, pending: remaining };
 			services.device.write(next);
@@ -269,9 +284,15 @@ export class Core {
 		}
 		this.require(guard);
 		const actions = plan(data, installed);
-		const issues = new Map(this.view.issues.filter(i => actions.some(a => key(a) === key(i.action))).map(i => [key(i.action), i]));
+		const issues = new Map(
+			this.view.issues
+				.filter((i) => actions.some((a) => key(a) === key(i.action)))
+				.map((i) => [key(i.action), i]),
+		);
 		this.publish({
-			data, installed, issues: [...issues.values()]
+			data,
+			installed,
+			issues: [...issues.values()],
 		});
 		let changed = 0;
 		let repaired = 0;
@@ -294,7 +315,9 @@ export class Core {
 				if (!latest) {
 					throw new SyncError("missing-data", "data.json disappeared during sync.");
 				}
-				const wanted = (action.kind === "plugin" ? latest.plugins : latest.themes).includes(action.id);
+				const wanted = (action.kind === "plugin" ? latest.plugins : latest.themes).includes(
+					action.id,
+				);
 				if (wanted !== action.present) {
 					this.dirty = true;
 					continue;
@@ -306,16 +329,20 @@ export class Core {
 				if (present !== action.present) {
 					throw new SyncError(
 						"operation",
-						action.present ? "Installation is incomplete." : "Extension is still installed after removal."
+						action.present
+							? "Installation is incomplete."
+							: "Extension is still installed after removal.",
 					);
 				}
 				issues.delete(key(action));
 				if (action.present && prepared.repair) repaired++;
 				else changed++;
-			}
-			catch (error) {
-				if (error instanceof Interrupted ||
-					error instanceof SyncError && (error.code === "missing-data" || error.code === "invalid-data")) {
+			} catch (error) {
+				if (
+					error instanceof Interrupted ||
+					(error instanceof SyncError &&
+						(error.code === "missing-data" || error.code === "invalid-data"))
+				) {
 					throw error;
 				}
 				issues.set(key(action), { action, ...problem(error, "operation") });
@@ -329,7 +356,7 @@ export class Core {
 			} catch (error) {
 				throw new SyncError(
 					"operation",
-					`Could not restore enabled plugins or the active theme: ${problem(error, "operation").message}`
+					`Could not restore enabled plugins or the active theme: ${problem(error, "operation").message}`,
 				);
 			}
 			this.require(guard);
@@ -340,19 +367,23 @@ export class Core {
 			installed,
 			issues: [...issues.values()],
 			error: null,
-			lastChecked: services.now()
+			lastChecked: services.now(),
 		});
 		if (changed) {
-			services.notify(`Plugback synchronized ${changed} ${changed === 1 ? "extension" : "extensions"}.`);
+			services.notify(
+				`Plugback synchronized ${changed} ${changed === 1 ? "extension" : "extensions"}.`,
+			);
 		}
 		if (repaired) {
-			services.notify(`Plugback repaired ${repaired} ${repaired === 1 ? "installation" : "installations"}.`);
+			services.notify(
+				`Plugback repaired ${repaired} ${repaired === 1 ? "installation" : "installations"}.`,
+			);
 		}
 	}
 	private captureInstalled(installed: Installed): Data {
 		return createData(
-			[...installed.plugins.keys()].filter(id => installed.managedPlugins.has(id)),
-			[...installed.themes.keys()].filter(id => installed.managedThemes.has(id)),
+			[...installed.plugins.keys()].filter((id) => installed.managedPlugins.has(id)),
+			[...installed.themes.keys()].filter((id) => installed.managedThemes.has(id)),
 			this.services.selfId,
 		);
 	}
@@ -375,8 +406,7 @@ export class Core {
 		for (const listener of this.listeners) {
 			try {
 				listener(this.snapshot);
-			}
-			catch (error) {
+			} catch (error) {
 				console.error("[Plugback] Status listener failed", error);
 			}
 		}

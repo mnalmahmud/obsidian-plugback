@@ -80,12 +80,14 @@ pnpm install --frozen-lockfile
 pnpm run build
 ```
 
-| Command | Purpose |
-| --- | --- |
-| `pnpm run dev` | Watch TypeScript sources and rebuild `main.js` |
-| `pnpm run build` | Typecheck and build for production |
-| `pnpm run check` | Check metadata, types, lint, build, and tests |
-| `pnpm run test` | Build and run the tests |
+| Command                 | Purpose                                                   |
+| ----------------------- | --------------------------------------------------------- |
+| `pnpm run dev`          | Watch TypeScript sources and rebuild `main.js`            |
+| `pnpm run build`        | Typecheck and build for production                        |
+| `pnpm run check`        | Check metadata, formatting, types, lint, build, and tests |
+| `pnpm run test`         | Build and run the tests                                   |
+| `pnpm run format`       | Format source, configuration, and documentation           |
+| `pnpm run format:check` | Check formatting without changing files                   |
 
 `seed/main.js` is readable source. The build embeds a minified copy in Plugback, which writes it into the vault. Restart the watcher after changing seed sources or manifests.
 

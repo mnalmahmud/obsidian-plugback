@@ -10,29 +10,49 @@ import {
 import { deferred } from "./helpers.ts";
 
 function registry(mobile = false) {
-	const replies = new Map<string, unknown>([[PLUGINS_REGISTRY_URL, [{ id: "one", repo: "owner/one" }]], [THEMES_REGISTRY_URL, [{
-		name: "Minimal", repo: "owner/theme", author: "Author", branch: "stable"
-	}]]]);
+	const replies = new Map<string, unknown>([
+		[PLUGINS_REGISTRY_URL, [{ id: "one", repo: "owner/one" }]],
+		[
+			THEMES_REGISTRY_URL,
+			[
+				{
+					name: "Minimal",
+					repo: "owner/theme",
+					author: "Author",
+					branch: "stable",
+				},
+			],
+		],
+	]);
 	const calls: string[] = [];
 	let now = 0;
 	const instance = new Registry({
 		now: () => now,
 		isMobile: mobile,
-		supportsVersion: value => Number(value.split('.')[0]) < 2,
-		fetchJson: url => {
+		supportsVersion: (value) => Number(value.split(".")[0]) < 2,
+		fetchJson: (url) => {
 			calls.push(url);
 			const value = replies.get(url);
-			return value === undefined || value instanceof Error ? Promise.reject(value ?? new Error("404")) : Promise.resolve(value);
-		}
+			return value === undefined || value instanceof Error
+				? Promise.reject(value ?? new Error("404"))
+				: Promise.resolve(value);
+		},
 	});
 	return {
-		instance, replies, calls, advance: () => {
+		instance,
+		replies,
+		calls,
+		advance: () => {
 			now += 31 * 60 * 1000;
-		}
+		},
 	};
 }
 const plugin = (version = "1.0.0", minAppVersion = "1.0.0", isDesktopOnly = false) => ({
-	id: "one", name: "One", version, minAppVersion, isDesktopOnly
+	id: "one",
+	name: "One",
+	version,
+	minAppVersion,
+	isDesktopOnly,
 });
 void test("directory cache coalesces requests, refreshes, expires, and rejects invalid responses", async () => {
 	const f = registry();
@@ -63,20 +83,29 @@ void test("clearing the cache prevents an old in-flight response from repopulati
 		fetchJson: () => {
 			requests++;
 			return requests === 1 ? waiting.promise : Promise.resolve([{ id: "new", repo: "owner/new" }]);
-		}
+		},
 	});
 	const old = r.getOfficialPluginIds();
 	r.clearCache();
 	waiting.resolve([{ id: "old", repo: "owner/old" }]);
 	await old;
-	assert.deepEqual([...await r.getOfficialPluginIds()], ["new"]);
+	assert.deepEqual([...(await r.getOfficialPluginIds())], ["new"]);
 });
 void test("plugin compatibility is checked against the selected release, not the branch manifest", async () => {
 	const f = registry();
 	f.replies.set("https://raw.githubusercontent.com/owner/one/HEAD/manifest.json", plugin("2.0.0"));
-	f.replies.set("https://github.com/owner/one/releases/download/2.0.0/manifest.json", plugin("2.0.0", "2.0.0"));
-	f.replies.set("https://raw.githubusercontent.com/owner/one/HEAD/versions.json", { "1.9.0": "1.0.0", "1.10.0": "1.0.0" });
-	f.replies.set("https://github.com/owner/one/releases/download/1.10.0/manifest.json", plugin("1.10.0"));
+	f.replies.set(
+		"https://github.com/owner/one/releases/download/2.0.0/manifest.json",
+		plugin("2.0.0", "2.0.0"),
+	);
+	f.replies.set("https://raw.githubusercontent.com/owner/one/HEAD/versions.json", {
+		"1.9.0": "1.0.0",
+		"1.10.0": "1.0.0",
+	});
+	f.replies.set(
+		"https://github.com/owner/one/releases/download/1.10.0/manifest.json",
+		plugin("1.10.0"),
+	);
 	const result = await f.instance.resolvePlugin("one");
 	assert.equal(result.ok, true);
 	if (result.ok) {
@@ -85,9 +114,18 @@ void test("plugin compatibility is checked against the selected release, not the
 });
 void test("mobile falls back past desktop-only releases and accepts v-prefixed tags", async () => {
 	const f = registry(true);
-	f.replies.set("https://raw.githubusercontent.com/owner/one/HEAD/manifest.json", plugin("2.0.0", "1.0.0", true));
-	f.replies.set("https://raw.githubusercontent.com/owner/one/HEAD/versions.json", { "2.0.0": "1.0.0", "1.0.0": "1.0.0" });
-	f.replies.set("https://github.com/owner/one/releases/download/2.0.0/manifest.json", plugin("2.0.0", "1.0.0", true));
+	f.replies.set(
+		"https://raw.githubusercontent.com/owner/one/HEAD/manifest.json",
+		plugin("2.0.0", "1.0.0", true),
+	);
+	f.replies.set("https://raw.githubusercontent.com/owner/one/HEAD/versions.json", {
+		"2.0.0": "1.0.0",
+		"1.0.0": "1.0.0",
+	});
+	f.replies.set(
+		"https://github.com/owner/one/releases/download/2.0.0/manifest.json",
+		plugin("2.0.0", "1.0.0", true),
+	);
 	f.replies.set("https://github.com/owner/one/releases/download/v1.0.0/manifest.json", plugin());
 	const result = await f.instance.resolvePlugin("one");
 	assert.equal(result.ok, true);
@@ -99,15 +137,24 @@ void test("unpublished versions, wrong identities, and mismatched release versio
 	const f = registry();
 	f.replies.set("https://raw.githubusercontent.com/owner/one/HEAD/manifest.json", plugin());
 	assert.equal((await f.instance.resolvePlugin("one")).ok, false);
-	f.replies.set("https://github.com/owner/one/releases/download/1.0.0/manifest.json", { ...plugin(), id: "wrong" });
+	f.replies.set("https://github.com/owner/one/releases/download/1.0.0/manifest.json", {
+		...plugin(),
+		id: "wrong",
+	});
 	assert.equal((await f.instance.resolvePlugin("one")).ok, false);
-	f.replies.set("https://github.com/owner/one/releases/download/1.0.0/manifest.json", plugin("3.0.0"));
+	f.replies.set(
+		"https://github.com/owner/one/releases/download/1.0.0/manifest.json",
+		plugin("3.0.0"),
+	);
 	assert.equal((await f.instance.resolvePlugin("one")).ok, false);
 });
 void test("a valid tagged-source manifest cannot override a mismatched plugin release attachment", async () => {
 	const f = registry();
 	f.replies.set("https://raw.githubusercontent.com/owner/one/HEAD/manifest.json", plugin());
-	f.replies.set("https://github.com/owner/one/releases/download/1.0.0/manifest.json", { ...plugin(), id: "wrong" });
+	f.replies.set("https://github.com/owner/one/releases/download/1.0.0/manifest.json", {
+		...plugin(),
+		id: "wrong",
+	});
 	f.replies.set("https://raw.githubusercontent.com/owner/one/1.0.0/manifest.json", plugin());
 	f.replies.set("https://raw.githubusercontent.com/owner/one/v1.0.0/manifest.json", plugin());
 	assert.equal((await f.instance.resolvePlugin("one")).ok, false);
@@ -116,7 +163,10 @@ void test("themes support branch distribution and compatible older releases", as
 	const f = registry();
 	const url = "https://raw.githubusercontent.com/owner/theme/stable/manifest.json";
 	f.replies.set(url, {
-		name: "Minimal", author: "A", version: "1.0.0", minAppVersion: "1.0.0"
+		name: "Minimal",
+		author: "A",
+		version: "1.0.0",
+		minAppVersion: "1.0.0",
 	});
 	let result = await f.instance.resolveTheme("Minimal");
 	assert.equal(result.ok, true);
@@ -124,11 +174,19 @@ void test("themes support branch distribution and compatible older releases", as
 		assert.equal(result.branch, "stable");
 	}
 	f.replies.set(url, {
-		name: "Minimal", author: "A", version: "2.0.0", minAppVersion: "2.0.0"
+		name: "Minimal",
+		author: "A",
+		version: "2.0.0",
+		minAppVersion: "2.0.0",
 	});
-	f.replies.set("https://raw.githubusercontent.com/owner/theme/stable/versions.json", { "1.0.0": "1.0.0" });
+	f.replies.set("https://raw.githubusercontent.com/owner/theme/stable/versions.json", {
+		"1.0.0": "1.0.0",
+	});
 	f.replies.set("https://github.com/owner/theme/releases/download/1.0.0/manifest.json", {
-		name: "Minimal", author: "A", version: "1.0.0", minAppVersion: "1.0.0"
+		name: "Minimal",
+		author: "A",
+		version: "1.0.0",
+		minAppVersion: "1.0.0",
 	});
 	result = await f.instance.resolveTheme("Minimal");
 	assert.equal(result.ok, true);
@@ -137,7 +195,11 @@ void test("themes support branch distribution and compatible older releases", as
 	}
 });
 void test("version ordering handles numeric components and prereleases", () => {
-	for (const [low, high] of [["1.9.0", "1.10.0"], ["1.0.0-beta.2", "1.0.0-beta.10"], ["1.0.0-rc.1", "1.0.0"]]) {
+	for (const [low, high] of [
+		["1.9.0", "1.10.0"],
+		["1.0.0-beta.2", "1.0.0-beta.10"],
+		["1.0.0-rc.1", "1.0.0"],
+	]) {
 		assert.ok(compareSemver(parseSemver(low!)!, parseSemver(high!)!) < 0);
 	}
 	assert.equal(parseSemver("garbage"), null);

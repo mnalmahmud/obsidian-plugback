@@ -1,5 +1,11 @@
 import type { Snapshot } from "./data.ts";
-import { PluginSettingTab, Setting, type App, type ButtonComponent, type SettingDefinitionItem } from "obsidian";
+import {
+	PluginSettingTab,
+	Setting,
+	type App,
+	type ButtonComponent,
+	type SettingDefinitionItem,
+} from "obsidian";
 import type { Core } from "./core.ts";
 
 export function statusText(snapshot: Snapshot): {
@@ -7,12 +13,15 @@ export function statusText(snapshot: Snapshot): {
 	description: string;
 } {
 	switch (snapshot.phase) {
-		case "checking": return { title: "Checking…", description: "" };
-		case "waiting": return {
-			title: "Waiting to retry.",
-			description: "The extension list is changing. Check again shortly."
-		};
-		case "stopped": return { title: "Stopped.", description: "Plugback is no longer running." };
+		case "checking":
+			return { title: "Checking…", description: "" };
+		case "waiting":
+			return {
+				title: "Waiting to retry.",
+				description: "The extension list is changing. Check again shortly.",
+			};
+		case "stopped":
+			return { title: "Stopped.", description: "Plugback is no longer running." };
 		case "error": {
 			let guidance = "";
 			if (snapshot.error?.code === "invalid-data") {
@@ -20,7 +29,9 @@ export function statusText(snapshot: Snapshot): {
 			}
 			return {
 				title: "Unable to sync.",
-				description: [snapshot.error?.message ?? "Unknown error.", guidance].filter(Boolean).join(" ")
+				description: [snapshot.error?.message ?? "Unknown error.", guidance]
+					.filter(Boolean)
+					.join(" "),
 			};
 		}
 		case "idle":
@@ -30,14 +41,14 @@ export function statusText(snapshot: Snapshot): {
 			if (snapshot.issues.length) {
 				return {
 					title: "Check incomplete.",
-					description: `${snapshot.issues.length} ${snapshot.issues.length === 1 ? "change failed" : "changes failed"}.`
+					description: `${snapshot.issues.length} ${snapshot.issues.length === 1 ? "change failed" : "changes failed"}.`,
 				};
 			}
 			return { title: "Up to date.", description: "" };
 	}
 }
 export function counts(wanted: readonly string[], installed: ReadonlyMap<string, string>): string {
-	const missing = wanted.filter(id => !installed.has(id)).length;
+	const missing = wanted.filter((id) => !installed.has(id)).length;
 	return `${wanted.length - missing} installed${missing ? ` · ${missing} missing` : ""}`;
 }
 
@@ -46,21 +57,28 @@ export class PlugbackSettingTab extends PluginSettingTab {
 	private expanded = new Set<string>();
 	private readonly core: Core | null;
 	private readonly unavailable: string | null;
-	constructor(app: App, plugin: import("obsidian").Plugin, core: Core | null, unavailable: string | null) {
+	constructor(
+		app: App,
+		plugin: import("obsidian").Plugin,
+		core: Core | null,
+		unavailable: string | null,
+	) {
 		super(app, plugin);
 		this.core = core;
 		this.unavailable = unavailable;
 	}
 	override getSettingDefinitions(): SettingDefinitionItem[] {
-		return [{
-			name: "Sync",
-			aliases: ["Check now", "Plugins", "Themes", "Add local extensions"],
-			render: setting => {
-				setting.settingEl.addClass("plugback-settings-host");
-				this.mount(setting.settingEl);
-				return () => this.hide();
-			}
-		}];
+		return [
+			{
+				name: "Sync",
+				aliases: ["Check now", "Plugins", "Themes", "Add local extensions"],
+				render: (setting) => {
+					setting.settingEl.addClass("plugback-settings-host");
+					this.mount(setting.settingEl);
+					return () => this.hide();
+				},
+			},
+		];
 	}
 	override display(): void {
 		this.mount(this.containerEl);
@@ -69,7 +87,9 @@ export class PlugbackSettingTab extends PluginSettingTab {
 		this.hide();
 		el.empty();
 		if (!this.core) {
-			new Setting(el).setName("Unable to sync.").setDesc(this.unavailable ?? "Plugback is not running.");
+			new Setting(el)
+				.setName("Unable to sync.")
+				.setDesc(this.unavailable ?? "Plugback is not running.");
 			return;
 		}
 		const render = this.buildView(el);
@@ -87,14 +107,19 @@ export class PlugbackSettingTab extends PluginSettingTab {
 		status.descEl.setAttribute("role", "status");
 		status.descEl.setAttribute("aria-live", "polite");
 		const buttons: ButtonComponent[] = [];
-		status.addButton(button => {
-			button.setButtonText("Check now").setCta().onClick(() => { void this.core?.check(); });
+		status.addButton((button) => {
+			button
+				.setButtonText("Check now")
+				.setCta()
+				.onClick(() => {
+					void this.core?.check();
+				});
 			buttons.push(button);
 		});
 		const issues = root.createEl("section", { cls: "plugback-issues" });
 		issues.setAttribute("aria-label", "Failed changes");
 		const inventories = root.createDiv({ cls: "plugback-inventories" });
-		const updateInventories = (["plugins", "themes"] as const).map(kind => {
+		const updateInventories = (["plugins", "themes"] as const).map((kind) => {
 			const details = inventories.createEl("details", { cls: "plugback-inventory" });
 			details.open = this.expanded.has(kind);
 			details.addEventListener("toggle", () => {
@@ -102,13 +127,22 @@ export class PlugbackSettingTab extends PluginSettingTab {
 				else this.expanded.delete(kind);
 			});
 			const summary = details.createEl("summary");
-			summary.createSpan({ cls: "plugback-inventory-title", text: kind === "plugins" ? "Plugins" : "Themes" });
+			summary.createSpan({
+				cls: "plugback-inventory-title",
+				text: kind === "plugins" ? "Plugins" : "Themes",
+			});
 			const count = summary.createSpan({ cls: "plugback-inventory-count" });
 			const list = details.createDiv({ cls: "plugback-inventory-list" });
 			return (snapshot: Snapshot): void => {
 				const wanted = snapshot.data?.[kind] ?? [];
 				const local = snapshot.installed?.[kind] ?? new Map<string, string>();
-				count.setText(!snapshot.installed ? "Not checked yet." : !snapshot.data ? "Sync data unavailable." : counts(wanted, local));
+				count.setText(
+					!snapshot.installed
+						? "Not checked yet."
+						: !snapshot.data
+							? "Sync data unavailable."
+							: counts(wanted, local),
+				);
 				const scrollTop = list.scrollTop;
 				list.empty();
 				if (!snapshot.installed) {
@@ -119,7 +153,9 @@ export class PlugbackSettingTab extends PluginSettingTab {
 					list.createEl("p", { cls: "plugback-empty", text: "Sync data unavailable." });
 					return;
 				}
-				const ids = [...wanted].sort((a, b) => (local.get(a) ?? a).localeCompare(local.get(b) ?? b));
+				const ids = [...wanted].sort((a, b) =>
+					(local.get(a) ?? a).localeCompare(local.get(b) ?? b),
+				);
 				if (!ids.length) list.createEl("p", { cls: "plugback-empty", text: `No synced ${kind}.` });
 				for (const id of ids) {
 					const row = list.createDiv({ cls: "plugback-extension" });
@@ -133,15 +169,21 @@ export class PlugbackSettingTab extends PluginSettingTab {
 			};
 		});
 		const consolidation = root.createDiv({ cls: "plugback-consolidation" });
-		new Setting(consolidation).setName("Add local extensions")
+		new Setting(consolidation)
+			.setName("Add local extensions")
 			.setDesc("Include plugins and themes already installed on this device.")
-			.addButton(button => {
-				button.setButtonText("Add").onClick(() => { void this.core?.consolidate(); });
+			.addButton((button) => {
+				button.setButtonText("Add").onClick(() => {
+					void this.core?.consolidate();
+				});
 				buttons.push(button);
 			});
-		return snapshot => {
+		return (snapshot) => {
 			const text = statusText(snapshot);
-			const lastChecked = snapshot.lastChecked === null ? "" : `Last checked: ${new Date(snapshot.lastChecked).toLocaleString()}.`;
+			const lastChecked =
+				snapshot.lastChecked === null
+					? ""
+					: `Last checked: ${new Date(snapshot.lastChecked).toLocaleString()}.`;
 			status.setDesc([text.title, text.description, lastChecked].filter(Boolean).join("\n"));
 			const busy = snapshot.phase === "checking" || snapshot.phase === "stopped";
 			for (const button of buttons) button.setDisabled(busy);
@@ -150,7 +192,11 @@ export class PlugbackSettingTab extends PluginSettingTab {
 			if (snapshot.issues.length) new Setting(issues).setName("Failed changes").setHeading();
 			for (const issue of snapshot.issues) {
 				const action = issue.action;
-				new Setting(issues).setName(`Could not ${action.present ? "install" : "remove"} ${action.kind} ${action.id}.`).setDesc(issue.message);
+				new Setting(issues)
+					.setName(
+						`Could not ${action.present ? "install" : "remove"} ${action.kind} ${action.id}.`,
+					)
+					.setDesc(issue.message);
 			}
 			for (const update of updateInventories) update(snapshot);
 		};

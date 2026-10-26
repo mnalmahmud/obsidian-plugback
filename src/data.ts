@@ -22,11 +22,7 @@ const CONFLICT_MARKER_RE = /^(<{7}|={7}|>{7})(?:\s|$)/m;
 const INVALID_THEME_CHAR_RE = /[/\\:*?"<>|\x00-\x1f\x7f]/;
 
 export function isValidPluginId(value: unknown): value is string {
-	return (
-		typeof value === "string" &&
-		!value.includes("..") &&
-		PLUGIN_ID_RE.test(value)
-	);
+	return typeof value === "string" && !value.includes("..") && PLUGIN_ID_RE.test(value);
 }
 
 export function isValidThemeName(value: unknown): value is string {
@@ -106,7 +102,7 @@ export function createData(
 	themes: Iterable<string>,
 	selfId: string,
 ): Data {
-	const normalizedPlugins = normalizeNames(plugins).filter(id => id !== selfId && id !== SEED_ID);
+	const normalizedPlugins = normalizeNames(plugins).filter((id) => id !== selfId && id !== SEED_ID);
 	for (const id of normalizedPlugins) {
 		if (!isValidPluginId(id)) {
 			throw new DataError(`Cannot persist invalid plugin ID: ${JSON.stringify(id)}.`);
@@ -176,18 +172,19 @@ export interface DeviceStore {
 }
 export interface Extensions {
 	scan(pending: readonly Intent[]): Promise<Installed>;
-	prepare(action: Action): Promise<{
-		repair?: boolean;
-		run: () => Promise<void>;
-	} | {
-		skip: string;
-	}>;
+	prepare(action: Action): Promise<
+		| {
+				repair?: boolean;
+				run: () => Promise<void>;
+		  }
+		| {
+				skip: string;
+		  }
+	>;
 	has(action: Action): Promise<boolean>;
 }
 export type NativeEvent =
-	| { type: "started" }
-	| { type: "changed"; action: Action }
-	| { type: "finished" };
+	{ type: "started" } | { type: "changed"; action: Action } | { type: "finished" };
 
 export interface Services {
 	selfId: string;
@@ -207,19 +204,20 @@ export class SyncError extends Error {
 		this.name = "SyncError";
 	}
 }
-export class Interrupted extends Error {
-}
+export class Interrupted extends Error {}
 export function problem(error: unknown, fallback: ProblemCode): Problem {
 	return {
 		code: error instanceof SyncError ? error.code : fallback,
-		message: error instanceof Error ? error.message : String(error)
+		message: error instanceof Error ? error.message : String(error),
 	};
 }
 export function key(value: Action): string {
 	return `${value.kind}:${value.id}`;
 }
 export function eligible(intent: Intent, installed: Installed): boolean {
-	return (intent.kind === "plugin" ? installed.managedPlugins : installed.managedThemes).has(intent.id);
+	return (intent.kind === "plugin" ? installed.managedPlugins : installed.managedThemes).has(
+		intent.id,
+	);
 }
 export function mergeIntents(data: Data, intents: readonly Intent[], selfId: string): Data {
 	const plugins = new Set(data.plugins);
@@ -231,8 +229,7 @@ export function mergeIntents(data: Data, intents: readonly Intent[], selfId: str
 		const targets = intent.kind === "plugin" ? plugins : themes;
 		if (intent.present) {
 			targets.add(intent.id);
-		}
-		else {
+		} else {
 			targets.delete(intent.id);
 		}
 	}
@@ -247,14 +244,18 @@ export function plan(data: Data, installed: Installed): Action[] {
 		for (const id of [...local.keys()].sort()) {
 			if (managed.has(id) && !wanted.has(id)) {
 				actions.push({
-					kind, id, present: false
+					kind,
+					id,
+					present: false,
 				});
 			}
 		}
 		for (const id of [...wanted].sort()) {
 			if (!local.has(id)) {
 				actions.push({
-					kind, id, present: true
+					kind,
+					id,
+					present: true,
 				});
 			}
 		}
@@ -263,7 +264,9 @@ export function plan(data: Data, installed: Installed): Action[] {
 }
 export function emptyDevice(): DeviceState {
 	return {
-		initialized: false, sequence: 0, pending: []
+		initialized: false,
+		sequence: 0,
+		pending: [],
 	};
 }
 export function parseDevice(raw: unknown): DeviceState {
@@ -285,11 +288,12 @@ export function parseDevice(raw: unknown): DeviceState {
 			throw new SyncError("storage", "Device journal contains an invalid entry.");
 		}
 		const i = rawIntent as Intent;
-		const validTarget = i.kind === "plugin"
-			? isValidPluginId(i.id)
-			: i.kind === "theme" && isValidThemeName(i.id);
-		const validSequence = Number.isSafeInteger(i.sequence) &&
-			i.sequence > 0 && i.sequence <= (value.sequence as number);
+		const validTarget =
+			i.kind === "plugin" ? isValidPluginId(i.id) : i.kind === "theme" && isValidThemeName(i.id);
+		const validSequence =
+			Number.isSafeInteger(i.sequence) &&
+			i.sequence > 0 &&
+			i.sequence <= (value.sequence as number);
 		if (!validTarget || typeof i.present !== "boolean" || !validSequence || seen.has(key(i))) {
 			throw new SyncError("storage", "Device journal contains an invalid entry.");
 		}
@@ -298,9 +302,12 @@ export function parseDevice(raw: unknown): DeviceState {
 	return {
 		initialized: value.initialized,
 		sequence: value.sequence as number,
-		pending: (value.pending as Intent[]).map(i => ({
-			kind: i.kind, id: i.id, present: i.present, sequence: i.sequence
-		}))
+		pending: (value.pending as Intent[]).map((i) => ({
+			kind: i.kind,
+			id: i.id,
+			present: i.present,
+			sequence: i.sequence,
+		})),
 	};
 }
 
@@ -322,13 +329,12 @@ export class SharedFile implements SharedStore {
 	private parse(text: string): Data {
 		try {
 			return parseDataText(text, this.selfId);
-		}
-		catch (error) {
+		} catch (error) {
 			throw new SyncError("invalid-data", error instanceof Error ? error.message : String(error));
 		}
 	}
 	async read(): Promise<Data | null> {
-		if (!await this.files.exists(this.path)) {
+		if (!(await this.files.exists(this.path))) {
 			return null;
 		}
 		return this.parse(await this.files.read(this.path));
@@ -342,7 +348,7 @@ export class SharedFile implements SharedStore {
 			return `${JSON.stringify(next, null, 2)}\n`;
 		};
 		if (await this.files.exists(this.path)) {
-			const result = await this.files.process(this.path, text => modify(text));
+			const result = await this.files.process(this.path, (text) => modify(text));
 			return this.parse(result);
 		}
 		// The initial creation has no existing file to process. External sync must

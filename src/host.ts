@@ -101,10 +101,13 @@ function stringProperty(value: unknown, property: "id" | "name"): string | null 
 }
 
 // Do not record Plugback's own installs and removals as user changes.
-export function createLifecycleHook(kind: Kind, manager: RawPluginManager | RawThemeManager): LifecycleHook {
+export function createLifecycleHook(
+	kind: Kind,
+	manager: RawPluginManager | RawThemeManager,
+): LifecycleHook {
 	const target = manager as unknown as Record<string, unknown>;
 	const managed = new Map<string, number>();
-	let detach = () => { };
+	let detach = () => {};
 	return {
 		async runManaged<T>(id: string, operation: () => Promise<T>): Promise<T> {
 			managed.set(id, (managed.get(id) ?? 0) + 1);
@@ -138,12 +141,15 @@ export function createLifecycleHook(kind: Kind, manager: RawPluginManager | RawT
 				}
 				try {
 					observer.emit(event);
-				}
-				catch (error) {
+				} catch (error) {
 					console.error("[Plugback] Native lifecycle observation failed", error);
 				}
 			};
-			const wrap = (method: string, present: boolean, idFromArgs: (args: unknown[]) => string | null) => {
+			const wrap = (
+				method: string,
+				present: boolean,
+				idFromArgs: (args: unknown[]) => string | null,
+			) => {
 				if (typeof target[method] !== "function") {
 					return;
 				}
@@ -151,7 +157,7 @@ export function createLifecycleHook(kind: Kind, manager: RawPluginManager | RawT
 				const hadOwn = Object.prototype.hasOwnProperty.call(target, method);
 				const wrapper = async (...args: unknown[]): Promise<unknown> => {
 					const id = idFromArgs(args);
-					if (!active || id !== null && managed.has(id)) {
+					if (!active || (id !== null && managed.has(id))) {
 						return original.apply(manager, args);
 					}
 					const operation = ++sequence;
@@ -187,13 +193,13 @@ export function createLifecycleHook(kind: Kind, manager: RawPluginManager | RawT
 					}
 				});
 			};
-			const firstArg = (args: unknown[]) => typeof args[0] === "string" ? args[0] : null;
+			const firstArg = (args: unknown[]) => (typeof args[0] === "string" ? args[0] : null);
 			try {
 				if (kind === "plugin") {
-					wrap("installPlugin", true, args => stringProperty(args[2], "id"));
+					wrap("installPlugin", true, (args) => stringProperty(args[2], "id"));
 					wrap("uninstallPlugin", false, firstArg);
 				} else {
-					wrap("installTheme", true, args => stringProperty(args[0], "name"));
+					wrap("installTheme", true, (args) => stringProperty(args[0], "name"));
 					wrap("removeTheme", false, firstArg);
 					wrap("uninstallTheme", false, firstArg);
 				}
@@ -230,7 +236,9 @@ export class Inspector {
 		return `${this.configDir}/${kind === "plugin" ? "plugins" : "themes"}`;
 	}
 	valid(kind: Kind, id: string): boolean {
-		return kind === "plugin" ? isValidPluginId(id) && id !== this.selfId && id !== SEED_ID : isValidThemeName(id);
+		return kind === "plugin"
+			? isValidPluginId(id) && id !== this.selfId && id !== SEED_ID
+			: isValidThemeName(id);
 	}
 	async manifest(kind: Kind, id: string): Promise<Record<string, unknown> | null> {
 		if (!this.valid(kind, id)) {
@@ -238,10 +246,12 @@ export class Inspector {
 		}
 		const folder = `${this.directory(kind)}/${id}`;
 		try {
-			if (!await this.files.exists(`${folder}/manifest.json`)) {
+			if (!(await this.files.exists(`${folder}/manifest.json`))) {
 				return null;
 			}
-			const code = await this.files.stat(`${folder}/${kind === "plugin" ? "main.js" : "theme.css"}`);
+			const code = await this.files.stat(
+				`${folder}/${kind === "plugin" ? "main.js" : "theme.css"}`,
+			);
 			if (code?.type !== "file" || code.size === 0) {
 				return null;
 			}
@@ -249,21 +259,22 @@ export class Inspector {
 			let value: unknown;
 			try {
 				value = JSON.parse(text);
-			}
-			catch {
+			} catch {
 				return null;
 			}
 			if (!value || typeof value !== "object") {
 				return null;
 			}
 			const manifest = value as Record<string, unknown>;
-			if (manifest[kind === "plugin" ? "id" : "name"] !== id || typeof manifest.version !== "string" ||
-				!manifest.version.trim()) {
+			if (
+				manifest[kind === "plugin" ? "id" : "name"] !== id ||
+				typeof manifest.version !== "string" ||
+				!manifest.version.trim()
+			) {
 				return null;
 			}
 			return manifest;
-		}
-		catch (error) {
+		} catch (error) {
 			if (missing(error)) {
 				return null;
 			}
@@ -271,17 +282,19 @@ export class Inspector {
 		}
 	}
 	async has(kind: Kind, id: string): Promise<boolean> {
-		return await this.manifest(kind, id) !== null;
+		return (await this.manifest(kind, id)) !== null;
 	}
 	async hasFiles(kind: Kind, id: string): Promise<boolean> {
 		if (!this.valid(kind, id)) return false;
 		const folder = `${this.directory(kind)}/${id}`;
-		return await this.files.exists(`${folder}/manifest.json`) ||
-			await this.files.exists(`${folder}/${kind === "plugin" ? "main.js" : "theme.css"}`);
+		return (
+			(await this.files.exists(`${folder}/manifest.json`)) ||
+			(await this.files.exists(`${folder}/${kind === "plugin" ? "main.js" : "theme.css"}`))
+		);
 	}
 	async list(kind: Kind): Promise<Map<string, string>> {
 		const dir = this.directory(kind);
-		if (!await this.files.exists(dir)) {
+		if (!(await this.files.exists(dir))) {
 			return new Map();
 		}
 		const entries = await this.files.list(dir);
@@ -315,7 +328,8 @@ export class ObsidianExtensions implements Extensions {
 		inspector: Inspector,
 		registry: Registry,
 		pluginHook: LifecycleHook,
-		themeHook: LifecycleHook) {
+		themeHook: LifecycleHook,
+	) {
 		this.app = app;
 		this.plugins = plugins;
 		this.themes = themes;
@@ -325,16 +339,25 @@ export class ObsidianExtensions implements Extensions {
 		this.themeHook = themeHook;
 	}
 	async scan(pending: readonly Intent[]): Promise<Installed> {
-		let [managedPlugins, managedThemes] = await Promise.all([this.registry.getOfficialPluginIds(), this.registry.getOfficialThemeNames()]);
-		if (pending.some(i => i.kind === "plugin" && i.present && !managedPlugins.has(i.id))) {
+		let [managedPlugins, managedThemes] = await Promise.all([
+			this.registry.getOfficialPluginIds(),
+			this.registry.getOfficialThemeNames(),
+		]);
+		if (pending.some((i) => i.kind === "plugin" && i.present && !managedPlugins.has(i.id))) {
 			managedPlugins = await this.registry.getOfficialPluginIds({ refresh: true });
 		}
-		if (pending.some(i => i.kind === "theme" && i.present && !managedThemes.has(i.id))) {
+		if (pending.some((i) => i.kind === "theme" && i.present && !managedThemes.has(i.id))) {
 			managedThemes = await this.registry.getOfficialThemeNames({ refresh: true });
 		}
-		const [plugins, themes] = await Promise.all([this.inspector.list("plugin"), this.inspector.list("theme")]);
+		const [plugins, themes] = await Promise.all([
+			this.inspector.list("plugin"),
+			this.inspector.list("theme"),
+		]);
 		return {
-			plugins, themes, managedPlugins, managedThemes
+			plugins,
+			themes,
+			managedPlugins,
+			managedThemes,
 		};
 	}
 	has(action: Action): Promise<boolean> {
@@ -345,14 +368,17 @@ export class ObsidianExtensions implements Extensions {
 			return { skip: "Invalid or protected extension." };
 		}
 		if (action.kind === "plugin") {
-			if (!await this.registry.isOfficialPlugin(action.id)) {
+			if (!(await this.registry.isOfficialPlugin(action.id))) {
 				return { skip: "Not listed in the official community plugin directory." };
 			}
 			if (!action.present) {
 				if (!this.plugins.manifests?.[action.id] && this.plugins.loadManifests) {
 					await this.plugins.loadManifests();
 				}
-				return { run: () => this.pluginHook.runManaged(action.id, () => this.plugins.uninstallPlugin(action.id)) };
+				return {
+					run: () =>
+						this.pluginHook.runManaged(action.id, () => this.plugins.uninstallPlugin(action.id)),
+				};
 			}
 			const release = await this.registry.resolvePlugin(action.id);
 			if (!release.ok) {
@@ -361,26 +387,29 @@ export class ObsidianExtensions implements Extensions {
 			return {
 				repair: await this.inspector.hasFiles(action.kind, action.id),
 				run: async () => {
-					await this.pluginHook.runManaged(
-						action.id,
-						() => this.plugins.installPlugin(
-							release.repo,
-							release.installVersion,
-							{
-								...release.manifest,
-								author: typeof release.manifest.author === "string" ? release.manifest.author : "",
-								description: typeof release.manifest.description === "string" ? release.manifest.description : ""
-							}
-						)
+					await this.pluginHook.runManaged(action.id, () =>
+						this.plugins.installPlugin(release.repo, release.installVersion, {
+							...release.manifest,
+							author: typeof release.manifest.author === "string" ? release.manifest.author : "",
+							description:
+								typeof release.manifest.description === "string"
+									? release.manifest.description
+									: "",
+						}),
 					);
-				}
+				},
 			};
 		}
-		if (!await this.registry.isOfficialTheme(action.id)) {
+		if (!(await this.registry.isOfficialTheme(action.id))) {
 			return { skip: "Not listed in the official community theme directory." };
 		}
 		if (!action.present) {
-			return { run: () => this.themeHook.runManaged(action.id, () => this.themes.removeTheme(action.id)).finally(() => this.refreshThemes()) };
+			return {
+				run: () =>
+					this.themeHook
+						.runManaged(action.id, () => this.themes.removeTheme(action.id))
+						.finally(() => this.refreshThemes()),
+			};
 		}
 		const release = await this.registry.resolveTheme(action.id);
 		if (!release.ok) {
@@ -388,20 +417,26 @@ export class ObsidianExtensions implements Extensions {
 		}
 		return {
 			repair: await this.inspector.hasFiles(action.kind, action.id),
-			run: () => this.themeHook.runManaged(
-				action.id,
-				() => this.themes.installTheme({
-					name: release.name,
-					repo: release.repo,
-					author: release.author,
-					branch: release.branch
-				}, release.version)
-			).finally(() => this.refreshThemes())
+			run: () =>
+				this.themeHook
+					.runManaged(action.id, () =>
+						this.themes.installTheme(
+							{
+								name: release.name,
+								repo: release.repo,
+								author: release.author,
+								branch: release.branch,
+							},
+							release.version,
+						),
+					)
+					.finally(() => this.refreshThemes()),
 		};
 	}
 	private refreshThemes(): void {
 		try {
-			const refresh = this.themes.requestReadThemes ?? this.themes.readThemes ?? this.themes.requestLoadTheme;
+			const refresh =
+				this.themes.requestReadThemes ?? this.themes.readThemes ?? this.themes.requestLoadTheme;
 			refresh?.call(this.themes);
 		} catch (error) {
 			console.warn("[Plugback] Could not refresh theme metadata", error);
@@ -415,9 +450,13 @@ export class ObsidianExtensions implements Extensions {
 			const raw: unknown = JSON.parse(await adapter.read(`${dir}/community-plugins.json`));
 			if (Array.isArray(raw)) {
 				for (const id of raw as unknown[]) {
-					if (typeof id === "string" && this.inspector.valid("plugin", id) && await this.registry.isOfficialPlugin(id) &&
+					if (
+						typeof id === "string" &&
+						this.inspector.valid("plugin", id) &&
+						(await this.registry.isOfficialPlugin(id)) &&
 						!this.plugins.plugins?.[id] &&
-						await this.inspector.has("plugin", id)) {
+						(await this.inspector.has("plugin", id))
+					) {
 						if (!alive()) {
 							return;
 						}
@@ -428,12 +467,20 @@ export class ObsidianExtensions implements Extensions {
 		}
 		if (await adapter.exists(`${dir}/appearance.json`)) {
 			const raw: unknown = JSON.parse(await adapter.read(`${dir}/appearance.json`));
-			const name = raw && typeof raw === "object" ? (raw as {
-				cssTheme?: unknown;
-			}).cssTheme : null;
-			if (typeof name === "string" && await this.registry.isOfficialTheme(name) &&
-				await this.inspector.has("theme", name) &&
-				alive()) {
+			const name =
+				raw && typeof raw === "object"
+					? (
+							raw as {
+								cssTheme?: unknown;
+							}
+						).cssTheme
+					: null;
+			if (
+				typeof name === "string" &&
+				(await this.registry.isOfficialTheme(name)) &&
+				(await this.inspector.has("theme", name)) &&
+				alive()
+			) {
 				this.themes.setTheme?.(name);
 			}
 		}
@@ -483,7 +530,7 @@ export class SeedMaintenance {
 		version: string;
 	} {
 		const raw: unknown = JSON.parse(text);
-		const manifest = raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
+		const manifest = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
 		if (manifest?.id !== SEED_ID || typeof manifest.version !== "string") {
 			throw new Error("Invalid Plugback Seed manifest; existing files were preserved.");
 		}
@@ -506,15 +553,18 @@ export class SeedMaintenance {
 				throw new Error("Invalid installed Plugback Seed version.");
 			}
 			const comparison = compareSemver(nextVersion, current);
-			replace = comparison > 0 ||
-				comparison === 0 && (!await this.files.exists(mainPath) || await this.files.read(mainPath) !== this.assets.mainJs);
+			replace =
+				comparison > 0 ||
+				(comparison === 0 &&
+					(!(await this.files.exists(mainPath)) ||
+						(await this.files.read(mainPath)) !== this.assets.mainJs));
 		}
 		if (!guard()) {
 			return;
 		}
 		if (replace) {
 			for (const folder of [this.pluginsDir, dir]) {
-				if (!await this.files.exists(folder)) {
+				if (!(await this.files.exists(folder))) {
 					if (!guard()) {
 						return;
 					}
@@ -533,7 +583,7 @@ export class SeedMaintenance {
 		if (!guard()) {
 			return;
 		}
-		if (!await this.manager.enabled()) {
+		if (!(await this.manager.enabled())) {
 			if (!guard()) {
 				return;
 			}
@@ -574,12 +624,20 @@ export function connect(plugin: Plugin) {
 	const inspector = new Inspector(app.vault.adapter, dir, plugin.manifest.id);
 	const pluginHook = createLifecycleHook("plugin", plugins);
 	const themeHook = createLifecycleHook("theme", themes);
-	const extensions = new ObsidianExtensions(app, plugins, themes, inspector, registry, pluginHook, themeHook);
+	const extensions = new ObsidianExtensions(
+		app,
+		plugins,
+		themes,
+		inspector,
+		registry,
+		pluginHook,
+		themeHook,
+	);
 	const device = new LocalDevice(app);
 	const shared = new SharedFile(
 		app.vault.adapter,
 		normalizePath(`${plugin.manifest.dir ?? `${dir}/plugins/${plugin.manifest.id}`}/data.json`),
-		plugin.manifest.id
+		plugin.manifest.id,
 	);
 	const seed = new SeedMaintenance(
 		app.vault.adapter,
@@ -591,7 +649,7 @@ export function connect(plugin: Plugin) {
 			},
 			enabled: async () => {
 				const path = `${dir}/community-plugins.json`;
-				if (!await app.vault.adapter.exists(path)) {
+				if (!(await app.vault.adapter.exists(path))) {
 					return false;
 				}
 				const value: unknown = JSON.parse(await app.vault.adapter.read(path));
@@ -600,7 +658,7 @@ export function connect(plugin: Plugin) {
 			enable: async () => {
 				await plugins.enablePluginAndSave(SEED_ID);
 			},
-		}
+		},
 	);
 	return {
 		shared,
@@ -619,12 +677,17 @@ export function connect(plugin: Plugin) {
 				}
 			};
 			try {
-				for (const [kind, hook] of [["plugin", pluginHook], ["theme", themeHook]] as const) {
-					subscriptions.push(hook.observe({
-						emit,
-						hasValidInstallation: id => inspector.has(kind, id),
-						isIgnored: id => !inspector.valid(kind, id),
-					}));
+				for (const [kind, hook] of [
+					["plugin", pluginHook],
+					["theme", themeHook],
+				] as const) {
+					subscriptions.push(
+						hook.observe({
+							emit,
+							hasValidInstallation: (id) => inspector.has(kind, id),
+							isIgnored: (id) => !inspector.valid(kind, id),
+						}),
+					);
 				}
 			} catch (error) {
 				detach();

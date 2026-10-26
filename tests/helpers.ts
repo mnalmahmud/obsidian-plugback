@@ -15,7 +15,7 @@ import {
 
 export function deferred<T>() {
 	let resolve!: (value: T) => void;
-	const promise = new Promise<T>(done => {
+	const promise = new Promise<T>((done) => {
 		resolve = done;
 	});
 	return { promise, resolve };
@@ -48,15 +48,15 @@ export function fixture(initialized = true) {
 		plugins: new Map(plugins),
 		themes: new Map(themes),
 		managedPlugins: new Set(officialPlugins),
-		managedThemes: new Set(officialThemes)
+		managedThemes: new Set(officialThemes),
 	});
 	const services: Services = {
 		selfId: "plugback",
 		now: () => 1000,
-		notify: message => {
+		notify: (message) => {
 			notifications.push(message);
 		},
-		observe: callback => {
+		observe: (callback) => {
 			listener = callback;
 			return () => {
 				listener = null;
@@ -67,7 +67,7 @@ export function fixture(initialized = true) {
 				if (deviceReadError) throw new Error("Local storage unavailable");
 				return structuredClone(device);
 			},
-			write: next => {
+			write: (next) => {
 				if (deviceWriteError) {
 					throw new Error("Local storage unavailable");
 				}
@@ -111,14 +111,14 @@ export function fixture(initialized = true) {
 						const targets = action.kind === "plugin" ? plugins : themes;
 						if (action.present) {
 							targets.set(action.id, action.id);
-						}
-						else {
+						} else {
 							targets.delete(action.id);
 						}
-					}
+					},
 				};
 			},
-			has: action => Promise.resolve((action.kind === "plugin" ? plugins : themes).has(action.id)),
+			has: (action) =>
+				Promise.resolve((action.kind === "plugin" ? plugins : themes).has(action.id)),
 		},
 	};
 	return {
@@ -176,18 +176,26 @@ export class Files {
 	beforeRead: ((path: string) => void) | null = null;
 	beforeWrite: ((path: string) => void) | null = null;
 	exists(path: string): Promise<boolean> {
-		return Promise.resolve(this.content.has(path) || this.folders.has(path) || [...this.content.keys()].some(p => p.startsWith(`${path}/`)));
+		return Promise.resolve(
+			this.content.has(path) ||
+				this.folders.has(path) ||
+				[...this.content.keys()].some((p) => p.startsWith(`${path}/`)),
+		);
 	}
 	stat(path: string): Promise<{ type: "file" | "folder"; size: number } | null> {
 		const content = this.content.get(path);
-		if (content !== undefined) return Promise.resolve({ type: "file", size: Buffer.byteLength(content) });
-		const folder = this.folders.has(path) || [...this.content.keys()].some(p => p.startsWith(`${path}/`));
+		if (content !== undefined)
+			return Promise.resolve({ type: "file", size: Buffer.byteLength(content) });
+		const folder =
+			this.folders.has(path) || [...this.content.keys()].some((p) => p.startsWith(`${path}/`));
 		return Promise.resolve(folder ? { type: "folder", size: 0 } : null);
 	}
 	read(path: string): Promise<string> {
 		this.beforeRead?.(path);
 		const value = this.content.get(path);
-		return value === undefined ? Promise.reject(Object.assign(new Error("Missing file"), { code: "ENOENT" })) : Promise.resolve(value);
+		return value === undefined
+			? Promise.reject(Object.assign(new Error("Missing file"), { code: "ENOENT" }))
+			: Promise.resolve(value);
 	}
 	write(path: string, text: string): Promise<void> {
 		this.beforeWrite?.(path);
@@ -213,13 +221,26 @@ export class Files {
 	list(path: string): Promise<{
 		folders: string[];
 	}> {
-		return Promise.resolve({ folders: [...new Set([...this.content.keys()].filter(p => p.startsWith(`${path}/`)).map(p => `${path}/${p.slice(path.length + 1).split('/')[0]}`))] });
+		return Promise.resolve({
+			folders: [
+				...new Set(
+					[...this.content.keys()]
+						.filter((p) => p.startsWith(`${path}/`))
+						.map((p) => `${path}/${p.slice(path.length + 1).split("/")[0]}`),
+				),
+			],
+		});
 	}
 	put(kind: "plugin" | "theme", id: string, configDir = ".config"): void {
 		const dir = `${configDir}/${kind === "plugin" ? "plugins" : "themes"}/${id}`;
-		this.content.set(`${dir}/manifest.json`, JSON.stringify({
-			[kind === "plugin" ? "id" : "name"]: id, version: "1.0.0", name: id
-		}));
+		this.content.set(
+			`${dir}/manifest.json`,
+			JSON.stringify({
+				[kind === "plugin" ? "id" : "name"]: id,
+				version: "1.0.0",
+				name: id,
+			}),
+		);
 		this.content.set(`${dir}/${kind === "plugin" ? "main.js" : "theme.css"}`, "/* extension */");
 	}
 }
