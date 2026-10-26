@@ -62,10 +62,11 @@ To include an unlisted plugin, add an exception such as `!.obsidian/plugins/my-p
 - Installing or removing a community plugin or theme in Obsidian updates the saved list.
 - Complete installations keep their versions. Plugback doesn’t update installed plugins and themes or synchronize their versions.
 - Enabled plugins and the selected theme follow Obsidian’s settings.
-- Empty plugin and theme arrays in `data.json` remove all managed plugins and themes.
 - Plugback and Plugback Seed are excluded from the list.
 
-Plugins are identified by their community plugin IDs; themes by their community theme names. Unlisted plugins and themes are left alone. A fork or locally modified plugin or theme that uses an official ID or name is still managed by Plugback.
+Plugins are identified by their community plugin IDs; themes by their community theme names. Unlisted plugins and themes are left alone.
+
+Modified plugins and themes with the original community ID or name are still managed by Plugback. It removes them if they’re absent from your sync list, and repairs can overwrite your modifications. Use a different, unlisted plugin ID or theme name to keep them outside Plugback’s control.
 
 To sync an unlisted plugin or theme, include its files in vault sync yourself.
 
