@@ -104,6 +104,14 @@ void test("unpublished versions, wrong identities, and mismatched release versio
 	f.replies.set("https://github.com/owner/one/releases/download/1.0.0/manifest.json", plugin("3.0.0"));
 	assert.equal((await f.instance.resolvePlugin("one")).ok, false);
 });
+void test("a valid tagged-source manifest cannot override a mismatched plugin release attachment", async () => {
+	const f = registry();
+	f.replies.set("https://raw.githubusercontent.com/owner/one/HEAD/manifest.json", plugin());
+	f.replies.set("https://github.com/owner/one/releases/download/1.0.0/manifest.json", { ...plugin(), id: "wrong" });
+	f.replies.set("https://raw.githubusercontent.com/owner/one/1.0.0/manifest.json", plugin());
+	f.replies.set("https://raw.githubusercontent.com/owner/one/v1.0.0/manifest.json", plugin());
+	assert.equal((await f.instance.resolvePlugin("one")).ok, false);
+});
 void test("themes support branch distribution and compatible older releases", async () => {
 	const f = registry();
 	const url = "https://raw.githubusercontent.com/owner/theme/stable/manifest.json";

@@ -247,7 +247,9 @@ export class Registry {
 		tag: string;
 	} | null> {
 		for (const tag of tags(version)) {
-			for (const url of [`https://github.com/${repo}/releases/download/${tag}/manifest.json`, `https://raw.githubusercontent.com/${repo}/${tag}/manifest.json`]) {
+			const urls = [`https://github.com/${repo}/releases/download/${tag}/manifest.json`];
+			if (kind === "theme") urls.push(`https://raw.githubusercontent.com/${repo}/${tag}/manifest.json`);
+			for (const url of urls) {
 				try {
 					const value = manifest(await this.deps.fetchJson(url), kind, id);
 					if (value && clean(value.version) === clean(version)) {
