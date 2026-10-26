@@ -232,7 +232,10 @@ export class Core {
 		let data = await services.shared.read();
 		this.require(guard);
 		if (!data && this.device.initialized) {
-			throw new SyncError("missing-data", "data.json is missing. Restore it from sync.");
+			throw new SyncError(
+				"missing-data",
+				"data.json is missing. Restore it from Git or another device.",
+			);
 		}
 		let installed = await this.scan(guard);
 		if (!data && !this.device.initialized && !this.mergeRequested) {
@@ -280,7 +283,10 @@ export class Core {
 			this.mergeRequested = false;
 		}
 		if (!data) {
-			throw new SyncError("missing-data", "data.json is missing. Restore it from sync.");
+			throw new SyncError(
+				"missing-data",
+				"data.json is missing. Restore it from Git or another device.",
+			);
 		}
 		this.require(guard);
 		const actions = plan(data, installed);

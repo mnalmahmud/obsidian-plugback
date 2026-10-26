@@ -237,7 +237,11 @@ void test("status is derived from typed state and preserves actionable storage g
 	assert.equal(ui.statusText(core.snapshot).title, "Up to date.");
 	const snapshot = core.snapshot;
 	snapshot.phase = "error";
-	snapshot.error = { code: "missing-data", message: "data.json is missing. Restore it from sync." };
+	snapshot.error = {
+		code: "missing-data",
+		message: "data.json is missing. Restore it from Git or another device.",
+	};
+	assert.equal(ui.statusText(snapshot).title, "Unable to sync.");
 	assert.equal(ui.statusText(snapshot).description, snapshot.error.message);
 	snapshot.error = { code: "invalid-data", message: "Invalid" };
 	assert.match(ui.statusText(snapshot).description, /conflict/);
