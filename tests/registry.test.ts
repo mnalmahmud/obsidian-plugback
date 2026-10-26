@@ -60,6 +60,10 @@ void test("directory cache coalesces requests, refreshes, expires, and rejects i
 	assert.equal(f.calls.length, 1);
 	await f.instance.getOfficialPluginIds();
 	assert.equal(f.calls.length, 1);
+	const ids = await f.instance.getOfficialPluginIds();
+	ids.clear();
+	assert.equal((await f.instance.getOfficialPluginIds()).has("one"), true);
+	assert.equal(f.calls.length, 1);
 	await f.instance.getOfficialPluginIds({ refresh: true });
 	assert.equal(f.calls.length, 2);
 	f.advance();
@@ -107,10 +111,8 @@ void test("plugin compatibility is checked against the selected release, not the
 		plugin("1.10.0"),
 	);
 	const result = await f.instance.resolvePlugin("one");
-	assert.equal(result.ok, true);
-	if (result.ok) {
-		assert.equal(result.installVersion, "1.10.0");
-	}
+	assert.ok(result.ok);
+	assert.equal(result.installVersion, "1.10.0");
 });
 void test("mobile falls back past desktop-only releases and accepts v-prefixed tags", async () => {
 	const f = registry(true);
@@ -128,10 +130,8 @@ void test("mobile falls back past desktop-only releases and accepts v-prefixed t
 	);
 	f.replies.set("https://github.com/owner/one/releases/download/v1.0.0/manifest.json", plugin());
 	const result = await f.instance.resolvePlugin("one");
-	assert.equal(result.ok, true);
-	if (result.ok) {
-		assert.equal(result.installVersion, "v1.0.0");
-	}
+	assert.ok(result.ok);
+	assert.equal(result.installVersion, "v1.0.0");
 });
 void test("invalid metadata and identity mismatches are rejected before resolving releases", async () => {
 	for (const kind of ["plugin", "theme"] as const) {
@@ -199,10 +199,8 @@ void test("themes support branch distribution and compatible older releases", as
 		minAppVersion: "1.0.0",
 	});
 	let result = await f.instance.resolveTheme("Minimal");
-	assert.equal(result.ok, true);
-	if (result.ok) {
-		assert.equal(result.branch, "stable");
-	}
+	assert.ok(result.ok);
+	assert.equal(result.branch, "stable");
 	f.replies.set(url, {
 		name: "Minimal",
 		author: "A",
@@ -219,10 +217,8 @@ void test("themes support branch distribution and compatible older releases", as
 		minAppVersion: "1.0.0",
 	});
 	result = await f.instance.resolveTheme("Minimal");
-	assert.equal(result.ok, true);
-	if (result.ok) {
-		assert.equal(result.version, "1.0.0");
-	}
+	assert.ok(result.ok);
+	assert.equal(result.version, "1.0.0");
 });
 void test("version ordering handles numeric components and prereleases", () => {
 	for (const [low, high] of [

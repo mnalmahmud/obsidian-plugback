@@ -126,25 +126,20 @@ void test("stop at a transaction boundary prevents the write", async () => {
 	assert.equal(f.device.pending.length, 1);
 	assert.equal(core.snapshot.phase, "stopped");
 });
-void test("stop during metadata preparation prevents the native mutation", async () => {
-	const f = fixture();
-	f.plugins.set("p2", "Two");
-	const core = f.core();
-	f.hooks.prepare = () => core.stop();
-	await core.check();
-	assert.equal(f.operations.length, 0);
-});
-void test("stop during the final desired-state read prevents removal", async () => {
-	const f = fixture();
-	f.plugins.set("p2", "Two");
-	const core = f.core();
-	f.hooks.prepare = () => {
-		f.hooks.read = () => core.stop();
-	};
-	await core.check();
-	assert.equal(f.operations.length, 0);
-	assert.equal(f.plugins.has("p2"), true);
-});
+for (const boundary of ["metadata preparation", "the final desired-state read"] as const) {
+	void test(`stop during ${boundary} prevents removal`, async () => {
+		const f = fixture();
+		f.plugins.set("p2", "Two");
+		const core = f.core();
+		f.hooks.prepare = () => {
+			if (boundary === "metadata preparation") core.stop();
+			else f.hooks.read = () => core.stop();
+		};
+		await core.check();
+		assert.equal(f.operations.length, 0);
+		assert.equal(f.plugins.has("p2"), true);
+	});
+}
 void test("stop during a suspended resolution prevents removal", async () => {
 	const f = fixture();
 	f.plugins.set("p2", "Two");

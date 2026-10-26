@@ -125,7 +125,6 @@ function hostFixture() {
 		calls,
 		manager,
 		themeManager,
-		app,
 		pluginHook,
 		themeHook,
 		extensions,
@@ -237,21 +236,18 @@ function seedFixture() {
 }
 
 void test("native adapter prepares without mutation and delegates runnable install/remove actions", async () => {
-	const f = hostFixture();
-	for (const [kind, id] of [
-		["plugin", "one"],
-		["theme", "Minimal"],
+	for (const [kind, id, expected] of [
+		["plugin", "one", ["install:one", "reload", "remove:one"]],
+		[
+			"theme",
+			"Minimal",
+			["install-theme:Minimal", "refresh-themes", "remove-theme:Minimal", "refresh-themes"],
+		],
 	] as const) {
-		const action = {
-			kind,
-			id,
-			present: true,
-		};
+		const f = hostFixture();
+		const action = { kind, id, present: true };
 		const prepared = await f.extensions.prepare(action);
-		assert.equal(
-			f.calls.some((call) => call.startsWith("install")),
-			kind === "theme",
-		);
+		assert.deepEqual(f.calls, []);
 		assert.ok("run" in prepared);
 		await prepared.run();
 		assert.equal(await f.extensions.has(action), true);
@@ -259,16 +255,8 @@ void test("native adapter prepares without mutation and delegates runnable insta
 		assert.ok("run" in remove);
 		await remove.run();
 		assert.equal(await f.extensions.has(action), false);
+		assert.deepEqual(f.calls, [...expected]);
 	}
-	assert.deepEqual(f.calls, [
-		"install:one",
-		"reload",
-		"remove:one",
-		"install-theme:Minimal",
-		"refresh-themes",
-		"remove-theme:Minimal",
-		"refresh-themes",
-	]);
 });
 
 void test("repair classification includes leftover installation files but excludes settings-only folders", async () => {

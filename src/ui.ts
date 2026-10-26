@@ -8,46 +8,23 @@ import {
 } from "obsidian";
 import type { Core } from "./core.ts";
 
-export function statusText(snapshot: Snapshot): {
-	title: string;
-	description: string;
-} {
+export function statusText(snapshot: Snapshot): string {
 	switch (snapshot.phase) {
 		case "checking":
-			return { title: "Checking…", description: "" };
+			return "Checking…";
 		case "waiting":
-			return {
-				title: "Waiting for changes to finish.",
-				description: "",
-			};
+			return "Waiting for changes to finish.";
 		case "stopped":
-			return { title: "", description: "" };
+			return "";
 		case "error": {
-			let guidance = "";
-			if (snapshot.error?.code === "invalid-data") {
-				guidance = "Check your vault’s sync for errors, then check again.";
-			}
-			return {
-				title: "Unable to sync.",
-				description: [
-					snapshot.error?.message ?? "Something went wrong. Try checking again.",
-					guidance,
-				]
-					.filter(Boolean)
-					.join(" "),
-			};
+			const detail = [snapshot.error?.message ?? "Something went wrong. Try checking again."];
+			if (snapshot.error?.code === "invalid-data")
+				detail.push("Check your vault’s sync for errors, then check again.");
+			return ["Unable to sync.", detail.filter(Boolean).join(" ")].filter(Boolean).join("\n");
 		}
 		case "idle":
-			if (!snapshot.initialized || snapshot.lastChecked === null) {
-				return { title: "", description: "" };
-			}
-			if (snapshot.issues.length) {
-				return {
-					title: "Sync finished with errors.",
-					description: "",
-				};
-			}
-			return { title: "Up to date.", description: "" };
+			if (!snapshot.initialized || snapshot.lastChecked === null) return "";
+			return snapshot.issues.length ? "Sync finished with errors." : "Up to date.";
 	}
 }
 export function counts(wanted: readonly string[], installed: ReadonlyMap<string, string>): string {
@@ -57,7 +34,7 @@ export function counts(wanted: readonly string[], installed: ReadonlyMap<string,
 
 export class PlugbackSettingTab extends PluginSettingTab {
 	private readonly cleanups = new Set<() => void>();
-	private expanded = new Set<string>();
+	private readonly expanded = new Set<string>();
 	private readonly core: Core | null;
 	private readonly unavailable: string | null;
 	constructor(
@@ -130,12 +107,11 @@ export class PlugbackSettingTab extends PluginSettingTab {
 						});
 				});
 				return this.watch((snapshot) => {
-					const text = statusText(snapshot);
 					const lastChecked =
 						snapshot.lastChecked === null
 							? ""
 							: `Last checked: ${new Date(snapshot.lastChecked).toLocaleString()}.`;
-					setting.setDesc([text.title, text.description, lastChecked].filter(Boolean).join("\n"));
+					setting.setDesc([statusText(snapshot), lastChecked].filter(Boolean).join("\n"));
 					button.setDisabled(snapshot.phase === "checking" || snapshot.phase === "stopped");
 				});
 			},

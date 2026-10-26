@@ -5,13 +5,13 @@ export const PLUGINS_REGISTRY_URL =
 export const THEMES_REGISTRY_URL =
 	"https://raw.githubusercontent.com/obsidianmd/obsidian-releases/HEAD/community-css-themes.json";
 const TTL = 30 * 60 * 1000;
-export interface RegistryDeps {
+interface RegistryDeps {
 	fetchJson(url: string): Promise<unknown>;
 	isMobile: boolean;
 	supportsVersion(version: string): boolean;
 	now(): number;
 }
-export interface Semver {
+interface Semver {
 	major: number;
 	minor: number;
 	patch: number;
@@ -76,7 +76,7 @@ export function compareSemver(a: Semver, b: Semver): number {
 	}
 	return 0;
 }
-export function isValidRepo(value: unknown): value is string {
+function isValidRepo(value: unknown): value is string {
 	return (
 		typeof value === "string" &&
 		/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value) &&
@@ -100,13 +100,12 @@ interface Manifest {
 	isDesktopOnly?: boolean;
 }
 interface ThemeEntry {
-	name: string;
 	repo: string;
 	author: string;
 	branch?: string;
 	legacy: boolean;
 }
-export type PluginResolution =
+type PluginResolution =
 	| {
 			ok: true;
 			repo: string;
@@ -119,7 +118,7 @@ export type PluginResolution =
 			ok: false;
 			reason: string;
 	  };
-export type ThemeResolution =
+type ThemeResolution =
 	| {
 			ok: true;
 			name: string;
@@ -127,7 +126,6 @@ export type ThemeResolution =
 			author: string;
 			branch?: string;
 			version: string;
-			manifest: Manifest;
 	  }
 	| {
 			ok: false;
@@ -176,6 +174,10 @@ interface Cached {
 	at: number;
 	entries: Map<string, Record<string, unknown>>;
 }
+interface Release {
+	manifest: Manifest;
+	tag: string;
+}
 export class Registry {
 	private readonly cache = new Map<string, Cached>();
 	private readonly inflight = new Map<string, Promise<Map<string, Record<string, unknown>>>>();
@@ -196,11 +198,11 @@ export class Registry {
 	): Promise<Map<string, Record<string, unknown>>> {
 		const cache = this.cache.get(url);
 		if (!refresh && cache && this.deps.now() - cache.at < TTL) {
-			return Promise.resolve(new Map(cache.entries));
+			return Promise.resolve(cache.entries);
 		}
 		const active = this.inflight.get(url);
 		if (active) {
-			return active.then((entries) => new Map(entries));
+			return active;
 		}
 		const epoch = this.epoch;
 		const kind = url === PLUGINS_REGISTRY_URL ? "plugin" : "theme";
@@ -235,7 +237,7 @@ export class Registry {
 				}
 			});
 		this.inflight.set(url, job);
-		return job.then((entries) => new Map(entries));
+		return job;
 	}
 	private async plugins(refresh = false): Promise<Map<string, string>> {
 		const entries = await this.directory(
@@ -255,7 +257,6 @@ export class Registry {
 			[...entries].map(([name, e]) => [
 				name,
 				{
-					name,
 					repo: e.repo as string,
 					author: typeof e.author === "string" ? e.author : "",
 					branch: branch(e.branch),
@@ -286,10 +287,7 @@ export class Registry {
 		version: string,
 		kind: "plugin" | "theme",
 		id: string,
-	): Promise<{
-		manifest: Manifest;
-		tag: string;
-	} | null> {
+	): Promise<Release | null> {
 		for (const tag of tags(version)) {
 			const urls = [`https://github.com/${repo}/releases/download/${tag}/manifest.json`];
 			if (kind === "theme")
@@ -312,10 +310,7 @@ export class Registry {
 		ref: string,
 		kind: "plugin" | "theme",
 		id: string,
-	): Promise<{
-		manifest: Manifest;
-		tag: string;
-	} | null> {
+	): Promise<Release | null> {
 		let raw: unknown;
 		try {
 			raw = await this.deps.fetchJson(
@@ -327,15 +322,20 @@ export class Registry {
 		if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
 			return null;
 		}
-		const versions = Object.entries(raw).filter(
-			([version, min]) =>
-				parseSemver(version) &&
+		const versions: { version: string; parsed: Semver }[] = [];
+		for (const [version, min] of Object.entries(raw)) {
+			const parsed = parseSemver(version);
+			if (
+				parsed &&
 				typeof min === "string" &&
 				/^\d+(?:\.\d+){0,3}$/.test(min) &&
-				this.deps.supportsVersion(min),
-		);
-		versions.sort(([a], [b]) => compareSemver(parseSemver(b)!, parseSemver(a)!));
-		for (const [version] of versions) {
+				this.deps.supportsVersion(min)
+			) {
+				versions.push({ version, parsed });
+			}
+		}
+		versions.sort((a, b) => compareSemver(b.parsed, a.parsed));
+		for (const { version } of versions) {
 			const result = await this.release(repo, version, kind, id);
 			if (result && this.compatible(result.manifest)) {
 				return result;
@@ -426,7 +426,6 @@ export class Registry {
 			repo: entry.repo,
 			author: entry.author,
 			branch: entry.branch,
-			manifest: selected.manifest,
 			version: selected.tag,
 		};
 	}

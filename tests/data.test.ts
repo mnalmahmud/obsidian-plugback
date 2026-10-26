@@ -252,6 +252,10 @@ void test("device state uses the plugback key and persists a clone of the journa
 	assert.deepEqual([...values.keys()], ["plugback"]);
 	state.pending.length = 0;
 	assert.equal(local.read().pending.length, 1);
+	const read = local.read();
+	read.pending[0]!.present = false;
+	read.pending.length = 0;
+	assert.equal(local.read().pending[0]!.present, true);
 	const saved = local.read();
 	assert.throws(() => local.write({ ...emptyDevice(), sequence: -1 }));
 	assert.deepEqual(local.read(), saved);

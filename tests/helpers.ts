@@ -6,7 +6,6 @@ import {
 	emptyDevice,
 	Interrupted,
 	type Action,
-	type DeviceState,
 	type Guard,
 	type Installed,
 	type Services,
@@ -21,8 +20,16 @@ export function deferred<T>() {
 	return { promise, resolve };
 }
 export function fixture(initialized = true) {
-	let data: Data | null = createData(["p1"], [], "plugback");
-	let device: DeviceState = { ...emptyDevice(), initialized };
+	const state = {
+		data: createData(["p1"], [], "plugback") as Data | null,
+		device: { ...emptyDevice(), initialized },
+		sharedWriteError: false,
+		deviceWriteError: false,
+		deviceReadError: false,
+		updates: 0,
+		scans: 0,
+		deviceWrites: 0,
+	};
 	const plugins = new Map([["p1", "Plugin One"]]);
 	const themes = new Map<string, string>();
 	const officialPlugins = new Set(["p1", "p2", "remote"]);
@@ -36,12 +43,6 @@ export function fixture(initialized = true) {
 		prepare: null as ((action: Action) => Promise<void> | void) | null,
 		run: null as ((action: Action) => Promise<void> | void) | null,
 	};
-	let sharedWriteError = false;
-	let deviceWriteError = false;
-	let deviceReadError = false;
-	let updates = 0;
-	let scans = 0;
-	let deviceWrites = 0;
 	let listener: ((event: NativeEvent) => void) | null = null;
 	const installed = (): Installed => ({
 		plugins: new Map(plugins),
@@ -63,38 +64,38 @@ export function fixture(initialized = true) {
 		},
 		device: {
 			read: () => {
-				if (deviceReadError) throw new Error("Local storage unavailable");
-				return structuredClone(device);
+				if (state.deviceReadError) throw new Error("Local storage unavailable");
+				return structuredClone(state.device);
 			},
 			write: (next) => {
-				if (deviceWriteError) {
+				if (state.deviceWriteError) {
 					throw new Error("Local storage unavailable");
 				}
-				device = structuredClone(next);
-				deviceWrites++;
+				state.device = structuredClone(next);
+				state.deviceWrites++;
 			},
 		},
 		shared: {
 			read: async () => {
 				await hooks.read?.();
-				return structuredClone(data);
+				return structuredClone(state.data);
 			},
 			update: async (transform: (value: Data | null) => Data, guard: Guard) => {
 				await hooks.update?.();
 				if (!guard()) {
 					throw new Interrupted();
 				}
-				if (sharedWriteError) {
+				if (state.sharedWriteError) {
 					throw new Error("Disk full");
 				}
-				data = transform(structuredClone(data));
-				updates++;
-				return structuredClone(data);
+				state.data = transform(structuredClone(state.data));
+				state.updates++;
+				return structuredClone(state.data);
 			},
 		},
 		extensions: {
 			scan: async () => {
-				scans++;
+				state.scans++;
 				await hooks.scan?.();
 				return installed();
 			},
@@ -120,7 +121,7 @@ export function fixture(initialized = true) {
 				Promise.resolve((action.kind === "plugin" ? plugins : themes).has(action.id)),
 		},
 	};
-	return {
+	return Object.assign(state, {
 		services,
 		hooks,
 		plugins,
@@ -130,40 +131,8 @@ export function fixture(initialized = true) {
 		operations,
 		notifications,
 		core: () => new Core(services),
-		get data() {
-			return data;
-		},
-		set data(value) {
-			data = value;
-		},
-		get device() {
-			return device;
-		},
-		set device(value) {
-			device = value;
-		},
-		get deviceWrites() {
-			return deviceWrites;
-		},
-		get updates() {
-			return updates;
-		},
-		get scans() {
-			return scans;
-		},
-		set sharedWriteError(value: boolean) {
-			sharedWriteError = value;
-		},
-		set deviceReadError(value: boolean) {
-			deviceReadError = value;
-		},
-		set deviceWriteError(value: boolean) {
-			deviceWriteError = value;
-		},
-		emit: (event: NativeEvent) => {
-			listener?.(event);
-		},
-	};
+		emit: (event: NativeEvent) => listener?.(event),
+	});
 }
 
 export class Files {

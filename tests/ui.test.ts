@@ -118,7 +118,7 @@ runInNewContext(output.outputFiles[0]!.text, {
 	require: () => ({ PluginSettingTab: Tab, Setting }),
 });
 const ui = mod.exports as {
-	statusText(snapshot: Snapshot): { title: string; description: string };
+	statusText(snapshot: Snapshot): string;
 	counts(wanted: readonly string[], installed: ReadonlyMap<string, string>): string;
 	PlugbackSettingTab: new (
 		app: unknown,
@@ -226,23 +226,25 @@ void test("actions are disabled during a running check", () => {
 void test("status is derived from typed state and preserves actionable storage guidance", async () => {
 	const f = fixture();
 	const core = f.core();
-	assert.equal(ui.statusText(core.snapshot).title, "");
-	assert.equal(ui.statusText(core.snapshot).description, "");
+	assert.equal(ui.statusText(core.snapshot), "");
 	await core.check();
-	assert.equal(ui.statusText(core.snapshot).title, "Up to date.");
+	assert.equal(ui.statusText(core.snapshot), "Up to date.");
 	const snapshot = core.snapshot;
 	snapshot.phase = "error";
 	snapshot.error = {
 		code: "missing-data",
 		message: "Your saved plugin and theme list is missing. Restore it to continue syncing.",
 	};
-	assert.equal(ui.statusText(snapshot).title, "Unable to sync.");
-	assert.equal(ui.statusText(snapshot).description, snapshot.error.message);
+	assert.equal(ui.statusText(snapshot), `Unable to sync.\n${snapshot.error.message}`);
 	snapshot.error = { code: "invalid-data", message: "Invalid" };
-	assert.match(
-		ui.statusText(snapshot).description,
-		/Check your vault’s sync for errors, then check again\./,
+	assert.match(ui.statusText(snapshot), /Check your vault’s sync for errors, then check again\./);
+	snapshot.error = null;
+	assert.equal(
+		ui.statusText(snapshot),
+		"Unable to sync.\nSomething went wrong. Try checking again.",
 	);
+	snapshot.error = { code: "storage", message: "" };
+	assert.equal(ui.statusText(snapshot), "Unable to sync.");
 });
 void test("counts include only synced extensions and show missing only when needed", () => {
 	assert.equal(

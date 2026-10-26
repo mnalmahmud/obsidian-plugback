@@ -33,7 +33,7 @@ export function isValidThemeName(value: unknown): value is string {
 	if (trimmed !== value || trimmed.length === 0 || trimmed.length > 160) {
 		return false;
 	}
-	if (trimmed === "." || trimmed === ".." || trimmed.includes("..")) {
+	if (trimmed === "." || trimmed.includes("..")) {
 		return false;
 	}
 	return !INVALID_THEME_CHAR_RE.test(trimmed);
@@ -298,6 +298,7 @@ export function parseDevice(raw: unknown): DeviceState {
 		throw new SyncError("storage", "Plugback’s saved data on this device is damaged.");
 	}
 	const seen = new Set<string>();
+	const pending: Intent[] = [];
 	for (const rawIntent of value.pending as unknown[]) {
 		if (!rawIntent || typeof rawIntent !== "object") {
 			throw new SyncError("storage", "Plugback couldn’t read your unsynced changes.");
@@ -313,16 +314,12 @@ export function parseDevice(raw: unknown): DeviceState {
 			throw new SyncError("storage", "Plugback couldn’t read your unsynced changes.");
 		}
 		seen.add(key(i));
+		pending.push({ kind: i.kind, id: i.id, present: i.present, sequence: i.sequence });
 	}
 	return {
 		initialized: value.initialized,
 		sequence: value.sequence as number,
-		pending: (value.pending as Intent[]).map((i) => ({
-			kind: i.kind,
-			id: i.id,
-			present: i.present,
-			sequence: i.sequence,
-		})),
+		pending,
 	};
 }
 

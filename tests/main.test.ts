@@ -10,11 +10,9 @@ interface Runtime {
 	onload(): void;
 	onunload(): void;
 	check(): Promise<void>;
-	onExternalSettingsChange(): void;
 	core: {
 		snapshot: Snapshot;
 		subscribe(listener: (snapshot: Snapshot) => void): () => void;
-		consolidate(): Promise<void>;
 	};
 }
 function pluginFixture(installed = true) {

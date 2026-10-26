@@ -42,7 +42,7 @@ export interface RawPluginManager {
 	loadManifests?: () => Promise<void>;
 }
 
-export function rawPluginManager(app: App): RawPluginManager | null {
+function rawPluginManager(app: App): RawPluginManager | null {
 	const candidate = (app as unknown as { plugins?: unknown }).plugins;
 	if (!candidate || typeof candidate !== "object") {
 		return null;
@@ -59,7 +59,7 @@ export function rawPluginManager(app: App): RawPluginManager | null {
 	return candidate as RawPluginManager;
 }
 
-export interface ThemeInstallOpts {
+interface ThemeInstallOpts {
 	name: string;
 	repo?: string;
 	author?: string;
@@ -67,7 +67,7 @@ export interface ThemeInstallOpts {
 	[key: string]: unknown;
 }
 
-export interface RawThemeManager {
+interface RawThemeManager {
 	installTheme: (opts: ThemeInstallOpts, version?: string) => Promise<void>;
 	removeTheme: (name: string) => Promise<void>;
 	setTheme?: (name: string) => void;
@@ -76,7 +76,7 @@ export interface RawThemeManager {
 	requestLoadTheme?: () => void;
 }
 
-export function rawThemeManager(app: App): RawThemeManager | null {
+function rawThemeManager(app: App): RawThemeManager | null {
 	const candidate = (app as unknown as { customCss?: unknown }).customCss;
 	if (!candidate || typeof candidate !== "object") {
 		return null;
@@ -88,7 +88,7 @@ export function rawThemeManager(app: App): RawThemeManager | null {
 	return candidate as RawThemeManager;
 }
 
-export interface LifecycleHook {
+interface LifecycleHook {
 	observe(observer: LifecycleObserver): () => void;
 	runManaged<T>(id: string, operation: () => Promise<T>): Promise<T>;
 }
@@ -213,7 +213,7 @@ export function createLifecycleHook(
 	};
 }
 
-export interface InstallationFiles {
+interface InstallationFiles {
 	exists(path: string): Promise<boolean>;
 	stat(path: string): Promise<{ type: "file" | "folder"; size: number } | null>;
 	read(path: string): Promise<string>;
@@ -241,7 +241,7 @@ export class Inspector {
 			? isValidPluginId(id) && id !== this.selfId && id !== SEED_ID
 			: isValidThemeName(id);
 	}
-	async manifest(kind: Kind, id: string): Promise<Record<string, unknown> | null> {
+	private async manifest(kind: Kind, id: string): Promise<Record<string, unknown> | null> {
 		if (!this.valid(kind, id)) {
 			return null;
 		}
@@ -372,10 +372,10 @@ export class ObsidianExtensions implements Extensions {
 			return { skip: "Plugback can’t manage itself or Plugback Seed." };
 		}
 		if (action.kind === "plugin") {
-			if (!(await this.registry.isOfficialPlugin(action.id))) {
-				return { skip: "This plugin isn’t in the community plugin directory." };
-			}
 			if (!action.present) {
+				if (!(await this.registry.isOfficialPlugin(action.id))) {
+					return { skip: "This plugin isn’t in the community plugin directory." };
+				}
 				if (!this.plugins.manifests?.[action.id] && this.plugins.loadManifests) {
 					await this.plugins.loadManifests();
 				}
@@ -390,8 +390,8 @@ export class ObsidianExtensions implements Extensions {
 			}
 			return {
 				repair: await this.inspector.hasFiles(action.kind, action.id),
-				run: async () => {
-					await this.pluginHook.runManaged(action.id, () =>
+				run: () =>
+					this.pluginHook.runManaged(action.id, () =>
 						this.plugins.installPlugin(release.repo, release.installVersion, {
 							...release.manifest,
 							author: typeof release.manifest.author === "string" ? release.manifest.author : "",
@@ -400,14 +400,13 @@ export class ObsidianExtensions implements Extensions {
 									? release.manifest.description
 									: "",
 						}),
-					);
-				},
+					),
 			};
 		}
-		if (!(await this.registry.isOfficialTheme(action.id))) {
-			return { skip: "This theme isn’t in the community theme directory." };
-		}
 		if (!action.present) {
+			if (!(await this.registry.isOfficialTheme(action.id))) {
+				return { skip: "This theme isn’t in the community theme directory." };
+			}
 			return {
 				run: () =>
 					this.themeHook
@@ -506,17 +505,17 @@ export class ObsidianExtensions implements Extensions {
 	}
 }
 
-export interface SeedAssets {
+interface SeedAssets {
 	manifest: string;
 	mainJs: string;
 }
-export interface SeedFiles {
+interface SeedFiles {
 	exists(path: string): Promise<boolean>;
 	read(path: string): Promise<string>;
 	write(path: string, data: string): Promise<void>;
 	mkdir(path: string): Promise<void>;
 }
-export interface SeedManager {
+interface SeedManager {
 	reload(): Promise<void>;
 	enabled(): Promise<boolean>;
 	enable(): Promise<void>;
