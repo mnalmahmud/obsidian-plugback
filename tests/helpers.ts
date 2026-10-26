@@ -20,7 +20,6 @@ export function deferred<T>() {
 	});
 	return { promise, resolve };
 }
-/** A small port fixture; no DOM or simulated Obsidian application. */
 export function fixture(initialized = true) {
 	let data: Data | null = createData(["p1"], [], "plugback");
 	let device: DeviceState = { ...emptyDevice(), initialized };
@@ -167,7 +166,6 @@ export function fixture(initialized = true) {
 	};
 }
 
-/** Implements only the filesystem operations consumed by storage and inspection. */
 export class Files {
 	readonly content = new Map<string, string>();
 	readonly folders = new Set<string>();

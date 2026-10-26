@@ -10,8 +10,8 @@ export interface Data {
 }
 
 export class DataError extends Error {
-	constructor(message: string) {
-		super(message);
+	constructor(message: string, cause?: unknown) {
+		super(message, { cause });
 		this.name = "DataError";
 	}
 }
@@ -46,22 +46,23 @@ function normalizeNames(names: Iterable<string>): string[] {
 function validateUniqueArray(
 	items: unknown,
 	isValid: (value: unknown) => value is string,
-	kindLabel: string,
+	kind: Kind,
 	selfId?: string,
 ): string[] {
+	const kindLabel = kind === "plugin" ? "plugin ID" : "theme name";
 	if (!Array.isArray(items)) {
-		throw new DataError(`Data has no ${kindLabel}s array.`);
+		throw new DataError("Your sync list is damaged.", `Data has no ${kindLabel}s array.`);
 	}
 	const seen = new Set<string>();
 	for (const item of items) {
 		if (!isValid(item)) {
-			throw new DataError(`Data contains an invalid ${kindLabel}: ${JSON.stringify(item)}.`);
+			throw new DataError(`Invalid ${kindLabel} in your sync list: ${JSON.stringify(item)}.`);
 		}
 		if (selfId !== undefined && (item === selfId || item === SEED_ID)) {
-			throw new DataError("Data must not include Plugback or Plugback Seed.");
+			throw new DataError("Your sync list can’t include Plugback or Plugback Seed.");
 		}
 		if (seen.has(item)) {
-			throw new DataError(`Data contains duplicate ${kindLabel}: ${item}.`);
+			throw new DataError(`Duplicate ${kind} in your sync list: ${item}.`);
 		}
 		seen.add(item);
 	}
@@ -70,29 +71,35 @@ function validateUniqueArray(
 
 export function parseData(raw: unknown, selfId = PLUGIN_ID): Data {
 	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-		throw new DataError("Data is not a JSON object.");
+		throw new DataError("Your sync list is damaged.", "Data is not a JSON object.");
 	}
 	const obj = raw as Record<string, unknown>;
 	if (obj.schemaVersion !== SCHEMA_VERSION) {
-		throw new DataError(`Unsupported data schemaVersion: ${String(obj.schemaVersion)}.`);
+		throw new DataError(
+			"Your sync list uses an unsupported format.",
+			`Unsupported data schemaVersion: ${String(obj.schemaVersion)}.`,
+		);
 	}
 
 	return {
 		schemaVersion: SCHEMA_VERSION,
-		plugins: validateUniqueArray(obj.plugins, isValidPluginId, "plugin ID", selfId),
-		themes: validateUniqueArray(obj.themes, isValidThemeName, "theme name"),
+		plugins: validateUniqueArray(obj.plugins, isValidPluginId, "plugin", selfId),
+		themes: validateUniqueArray(obj.themes, isValidThemeName, "theme"),
 	};
 }
 
 export function parseDataText(text: string, selfId = PLUGIN_ID): Data {
 	if (CONFLICT_MARKER_RE.test(text)) {
-		throw new DataError("Data file contains unresolved sync conflict markers.");
+		throw new DataError(
+			"Your sync list has an unresolved conflict.",
+			"Data file contains unresolved sync conflict markers.",
+		);
 	}
 	let raw: unknown;
 	try {
 		raw = JSON.parse(text);
-	} catch {
-		throw new DataError("Data file is not valid JSON.");
+	} catch (error) {
+		throw new DataError("Your sync list is damaged.", error);
 	}
 	return parseData(raw, selfId);
 }
@@ -105,13 +112,13 @@ export function createData(
 	const normalizedPlugins = normalizeNames(plugins).filter((id) => id !== selfId && id !== SEED_ID);
 	for (const id of normalizedPlugins) {
 		if (!isValidPluginId(id)) {
-			throw new DataError(`Cannot persist invalid plugin ID: ${JSON.stringify(id)}.`);
+			throw new DataError(`Can’t save an invalid plugin ID: ${JSON.stringify(id)}.`);
 		}
 	}
 	const normalizedThemes = normalizeNames(themes);
 	for (const name of normalizedThemes) {
 		if (!isValidThemeName(name)) {
-			throw new DataError(`Cannot persist invalid theme name: ${JSON.stringify(name)}.`);
+			throw new DataError(`Can’t save an invalid theme name: ${JSON.stringify(name)}.`);
 		}
 	}
 	return {
@@ -198,8 +205,8 @@ export interface Services {
 }
 export class SyncError extends Error {
 	readonly code: ProblemCode;
-	constructor(code: ProblemCode, message: string) {
-		super(message);
+	constructor(code: ProblemCode, message: string, cause?: unknown) {
+		super(message, { cause });
 		this.code = code;
 		this.name = "SyncError";
 	}
@@ -210,6 +217,14 @@ export function problem(error: unknown, fallback: ProblemCode): Problem {
 		code: error instanceof SyncError ? error.code : fallback,
 		message: error instanceof Error ? error.message : String(error),
 	};
+}
+export function noticeMessage(error: unknown): string {
+	const message = problem(error, "operation").message;
+	if (!(error instanceof DataError || error instanceof SyncError)) return message;
+	if (error.cause !== undefined && message === problem(error.cause, "operation").message)
+		return noticeMessage(error.cause);
+	if (/^(Plugback|Obsidian)\b/.test(message)) return message;
+	return message.charAt(0).toLowerCase() + message.slice(1);
 }
 export function key(value: Action): string {
 	return `${value.kind}:${value.id}`;
@@ -271,7 +286,7 @@ export function emptyDevice(): DeviceState {
 }
 export function parseDevice(raw: unknown): DeviceState {
 	if (!raw || typeof raw !== "object") {
-		throw new SyncError("storage", "Device state is invalid.");
+		throw new SyncError("storage", "Plugback’s saved data on this device is damaged.");
 	}
 	const value = raw as Record<string, unknown>;
 	if (
@@ -280,12 +295,12 @@ export function parseDevice(raw: unknown): DeviceState {
 		(value.sequence as number) < 0 ||
 		!Array.isArray(value.pending)
 	) {
-		throw new SyncError("storage", "Device state is invalid.");
+		throw new SyncError("storage", "Plugback’s saved data on this device is damaged.");
 	}
 	const seen = new Set<string>();
 	for (const rawIntent of value.pending as unknown[]) {
 		if (!rawIntent || typeof rawIntent !== "object") {
-			throw new SyncError("storage", "Device journal contains an invalid entry.");
+			throw new SyncError("storage", "Plugback couldn’t read your unsynced changes.");
 		}
 		const i = rawIntent as Intent;
 		const validTarget =
@@ -295,7 +310,7 @@ export function parseDevice(raw: unknown): DeviceState {
 			i.sequence > 0 &&
 			i.sequence <= (value.sequence as number);
 		if (!validTarget || typeof i.present !== "boolean" || !validSequence || seen.has(key(i))) {
-			throw new SyncError("storage", "Device journal contains an invalid entry.");
+			throw new SyncError("storage", "Plugback couldn’t read your unsynced changes.");
 		}
 		seen.add(key(i));
 	}
@@ -330,7 +345,11 @@ export class SharedFile implements SharedStore {
 		try {
 			return parseDataText(text, this.selfId);
 		} catch (error) {
-			throw new SyncError("invalid-data", error instanceof Error ? error.message : String(error));
+			throw new SyncError(
+				"invalid-data",
+				error instanceof Error ? error.message : String(error),
+				error,
+			);
 		}
 	}
 	async read(): Promise<Data | null> {
@@ -351,8 +370,7 @@ export class SharedFile implements SharedStore {
 			const result = await this.files.process(this.path, (text) => modify(text));
 			return this.parse(result);
 		}
-		// The initial creation has no existing file to process. External sync must
-		// finish bringing the vault onto a new device before initial setup.
+		// Sync the vault before first setup: creating a missing file isn’t transactional.
 		const text = modify(null);
 		await this.files.write(this.path, text);
 		return this.parse(text);

@@ -13,6 +13,7 @@ import {
 	LocalDevice,
 	SharedFile,
 	SyncError,
+	problem,
 	isValidPluginId,
 	isValidThemeName,
 	type Kind,
@@ -100,7 +101,7 @@ function stringProperty(value: unknown, property: "id" | "name"): string | null 
 	return typeof result === "string" ? result : null;
 }
 
-// Do not record Plugback's own installs and removals as user changes.
+// Exclude installs and removals performed by Plugback from user changes.
 export function createLifecycleHook(
 	kind: Kind,
 	manager: RawPluginManager | RawThemeManager,
@@ -364,12 +365,15 @@ export class ObsidianExtensions implements Extensions {
 		return this.inspector.has(action.kind, action.id);
 	}
 	async prepare(action: Action): ReturnType<Extensions["prepare"]> {
+		if (action.kind === "plugin" ? !isValidPluginId(action.id) : !isValidThemeName(action.id)) {
+			return { skip: action.kind === "plugin" ? "Invalid plugin ID." : "Invalid theme name." };
+		}
 		if (!this.inspector.valid(action.kind, action.id)) {
-			return { skip: "Invalid or protected extension." };
+			return { skip: "Plugback can’t manage itself or Plugback Seed." };
 		}
 		if (action.kind === "plugin") {
 			if (!(await this.registry.isOfficialPlugin(action.id))) {
-				return { skip: "Not listed in the official community plugin directory." };
+				return { skip: "This plugin isn’t in the community plugin directory." };
 			}
 			if (!action.present) {
 				if (!this.plugins.manifests?.[action.id] && this.plugins.loadManifests) {
@@ -401,7 +405,7 @@ export class ObsidianExtensions implements Extensions {
 			};
 		}
 		if (!(await this.registry.isOfficialTheme(action.id))) {
-			return { skip: "Not listed in the official community theme directory." };
+			return { skip: "This theme isn’t in the community theme directory." };
 		}
 		if (!action.present) {
 			return {
@@ -442,47 +446,62 @@ export class ObsidianExtensions implements Extensions {
 			console.warn("[Plugback] Could not refresh theme metadata", error);
 		}
 	}
-	// Reapply enabled plugins and the selected theme after installing their files.
 	async restoreActivation(alive: () => boolean): Promise<void> {
 		const adapter = this.app.vault.adapter;
 		const dir = this.app.vault.configDir;
-		if (await adapter.exists(`${dir}/community-plugins.json`)) {
-			const raw: unknown = JSON.parse(await adapter.read(`${dir}/community-plugins.json`));
-			if (Array.isArray(raw)) {
-				for (const id of raw as unknown[]) {
-					if (
-						typeof id === "string" &&
-						this.inspector.valid("plugin", id) &&
-						(await this.registry.isOfficialPlugin(id)) &&
-						!this.plugins.plugins?.[id] &&
-						(await this.inspector.has("plugin", id))
-					) {
-						if (!alive()) {
-							return;
+		try {
+			if (await adapter.exists(`${dir}/community-plugins.json`)) {
+				const raw: unknown = JSON.parse(await adapter.read(`${dir}/community-plugins.json`));
+				if (Array.isArray(raw)) {
+					for (const id of raw as unknown[]) {
+						if (
+							typeof id === "string" &&
+							this.inspector.valid("plugin", id) &&
+							(await this.registry.isOfficialPlugin(id)) &&
+							!this.plugins.plugins?.[id] &&
+							(await this.inspector.has("plugin", id))
+						) {
+							if (!alive()) {
+								return;
+							}
+							await this.plugins.enablePlugin(id);
 						}
-						await this.plugins.enablePlugin(id);
 					}
 				}
 			}
+		} catch (error) {
+			throw new SyncError(
+				"operation",
+				`couldn’t enable your restored plugins: ${problem(error, "operation").message}`,
+				error,
+			);
 		}
-		if (await adapter.exists(`${dir}/appearance.json`)) {
-			const raw: unknown = JSON.parse(await adapter.read(`${dir}/appearance.json`));
-			const name =
-				raw && typeof raw === "object"
-					? (
-							raw as {
-								cssTheme?: unknown;
-							}
-						).cssTheme
-					: null;
-			if (
-				typeof name === "string" &&
-				(await this.registry.isOfficialTheme(name)) &&
-				(await this.inspector.has("theme", name)) &&
-				alive()
-			) {
-				this.themes.setTheme?.(name);
+		try {
+			if (await adapter.exists(`${dir}/appearance.json`)) {
+				const raw: unknown = JSON.parse(await adapter.read(`${dir}/appearance.json`));
+				const name =
+					raw && typeof raw === "object"
+						? (
+								raw as {
+									cssTheme?: unknown;
+								}
+							).cssTheme
+						: null;
+				if (
+					typeof name === "string" &&
+					(await this.registry.isOfficialTheme(name)) &&
+					(await this.inspector.has("theme", name)) &&
+					alive()
+				) {
+					this.themes.setTheme?.(name);
+				}
 			}
+		} catch (error) {
+			throw new SyncError(
+				"operation",
+				`couldn’t apply your restored theme: ${problem(error, "operation").message}`,
+				error,
+			);
 		}
 	}
 }
@@ -605,8 +624,11 @@ export function connect(plugin: Plugin) {
 	const app = plugin.app;
 	const plugins = rawPluginManager(app);
 	const themes = rawThemeManager(app);
-	if (!plugins || !themes) {
-		throw new Error("Obsidian's community plugin or theme manager is unavailable.");
+	if (!plugins) {
+		throw new Error("Plugback couldn’t access Obsidian’s plugins.");
+	}
+	if (!themes) {
+		throw new Error("Plugback couldn’t access Obsidian’s themes.");
 	}
 	const dir = normalizePath(app.vault.configDir);
 	const registry = new Registry({

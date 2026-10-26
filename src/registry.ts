@@ -133,7 +133,7 @@ export type ThemeResolution =
 			ok: false;
 			reason: string;
 	  };
-function manifest(raw: unknown, kind: "plugin" | "theme", id: string): Manifest | null {
+function manifest(raw: unknown, kind: "plugin" | "theme", id?: string): Manifest | null {
 	if (!raw || typeof raw !== "object") {
 		return null;
 	}
@@ -152,7 +152,10 @@ function manifest(raw: unknown, kind: "plugin" | "theme", id: string): Manifest 
 	) {
 		return null;
 	}
-	if (kind === "plugin" ? value.id !== id : value.name !== id) {
+	if (kind === "plugin" ? !isValidPluginId(value.id) : !isValidThemeName(value.name)) {
+		return null;
+	}
+	if (id !== undefined && (kind === "plugin" ? value.id !== id : value.name !== id)) {
 		return null;
 	}
 	if (value.isDesktopOnly !== undefined && typeof value.isDesktopOnly !== "boolean") {
@@ -200,11 +203,12 @@ export class Registry {
 			return active.then((entries) => new Map(entries));
 		}
 		const epoch = this.epoch;
+		const kind = url === PLUGINS_REGISTRY_URL ? "plugin" : "theme";
 		const job = this.deps
 			.fetchJson(url)
 			.then((raw) => {
 				if (!Array.isArray(raw)) {
-					throw new SyncError("directory", "Community directory returned an invalid response.");
+					throw new SyncError("directory", `Couldn’t read the community ${kind} directory.`);
 				}
 				const entries = new Map<string, Record<string, unknown>>();
 				for (const item of raw as unknown[]) {
@@ -218,7 +222,7 @@ export class Registry {
 					}
 				}
 				if (!entries.size) {
-					throw new SyncError("directory", "Community directory contained no valid entries.");
+					throw new SyncError("directory", `The community ${kind} directory has no valid entries.`);
 				}
 				if (this.epoch === epoch) {
 					this.cache.set(url, { at: this.deps.now(), entries });
@@ -345,15 +349,17 @@ export class Registry {
 		}
 		const repo = (await this.plugins()).get(id);
 		if (!repo) {
-			return { ok: false, reason: "Not listed in the official community plugin directory." };
+			return { ok: false, reason: "This plugin isn’t in the community plugin directory." };
 		}
 		const latest = manifest(
 			await this.deps.fetchJson(`https://raw.githubusercontent.com/${repo}/HEAD/manifest.json`),
 			"plugin",
-			id,
 		);
 		if (!latest) {
-			return { ok: false, reason: "Published plugin manifest is invalid or has a different ID." };
+			return { ok: false, reason: "The plugin’s information is invalid." };
+		}
+		if (latest.id !== id) {
+			return { ok: false, reason: "The plugin’s information identifies a different plugin." };
 		}
 		let selected = await this.release(repo, latest.version, "plugin", id);
 		if (!selected || !this.compatible(selected.manifest)) {
@@ -362,7 +368,7 @@ export class Registry {
 		if (!selected) {
 			return {
 				ok: false,
-				reason: "No compatible published plugin release was found for this device.",
+				reason: "No compatible version of this plugin is available for this device.",
 			};
 		}
 		return {
@@ -380,10 +386,13 @@ export class Registry {
 		}
 		const entry = (await this.themes()).get(name);
 		if (!entry) {
-			return { ok: false, reason: "Not listed in the official community theme directory." };
+			return { ok: false, reason: "This theme isn’t in the community theme directory." };
 		}
 		if (entry.legacy) {
-			return { ok: false, reason: "Legacy themes are unsupported." };
+			return {
+				ok: false,
+				reason: "This theme is marked as incompatible with current versions of Obsidian.",
+			};
 		}
 		const ref = entry.branch ?? "HEAD";
 		const latest = manifest(
@@ -391,10 +400,12 @@ export class Registry {
 				`https://raw.githubusercontent.com/${entry.repo}/${ref}/manifest.json`,
 			),
 			"theme",
-			name,
 		);
 		if (!latest) {
-			return { ok: false, reason: "Published theme manifest is invalid or has a different name." };
+			return { ok: false, reason: "The theme’s information is invalid." };
+		}
+		if (latest.name !== name) {
+			return { ok: false, reason: "The theme’s information identifies a different theme." };
 		}
 		let selected = await this.release(entry.repo, latest.version, "theme", name);
 		if (!selected && this.compatible(latest)) {
@@ -404,7 +415,10 @@ export class Registry {
 			selected = await this.older(entry.repo, ref, "theme", name);
 		}
 		if (!selected) {
-			return { ok: false, reason: "No compatible theme version was found for this device." };
+			return {
+				ok: false,
+				reason: "No compatible version of this theme is available for this device.",
+			};
 		}
 		return {
 			ok: true,

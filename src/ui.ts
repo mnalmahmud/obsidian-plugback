@@ -17,31 +17,34 @@ export function statusText(snapshot: Snapshot): {
 			return { title: "Checking…", description: "" };
 		case "waiting":
 			return {
-				title: "Waiting to retry.",
-				description: "The extension list is changing. Check again shortly.",
+				title: "Waiting for changes to finish.",
+				description: "",
 			};
 		case "stopped":
-			return { title: "Stopped.", description: "Plugback is no longer running." };
+			return { title: "", description: "" };
 		case "error": {
 			let guidance = "";
 			if (snapshot.error?.code === "invalid-data") {
-				guidance = "Fix data.json or resolve its sync conflict, then check again.";
+				guidance = "Check your vault’s sync for errors, then check again.";
 			}
 			return {
 				title: "Unable to sync.",
-				description: [snapshot.error?.message ?? "Unknown error.", guidance]
+				description: [
+					snapshot.error?.message ?? "Something went wrong. Try checking again.",
+					guidance,
+				]
 					.filter(Boolean)
 					.join(" "),
 			};
 		}
 		case "idle":
 			if (!snapshot.initialized || snapshot.lastChecked === null) {
-				return { title: "Not checked.", description: "" };
+				return { title: "", description: "" };
 			}
 			if (snapshot.issues.length) {
 				return {
-					title: "Check incomplete.",
-					description: `${snapshot.issues.length} ${snapshot.issues.length === 1 ? "change failed" : "changes failed"}.`,
+					title: "Sync finished with errors.",
+					description: "",
 				};
 			}
 			return { title: "Up to date.", description: "" };
@@ -69,7 +72,7 @@ export class PlugbackSettingTab extends PluginSettingTab {
 	}
 	override getSettingDefinitions(): SettingDefinitionItem[] {
 		if (!this.core)
-			return [{ name: "Unable to sync.", desc: this.unavailable ?? "Plugback is not running." }];
+			return [{ name: "Unable to sync.", desc: this.unavailable ?? "Plugback couldn’t start." }];
 		const { sync, issues, inventories, add } = this.definitions();
 		return [
 			{ type: "group", cls: "plugback-settings", items: [sync, issues] },
@@ -83,7 +86,7 @@ export class PlugbackSettingTab extends PluginSettingTab {
 		if (!this.core) {
 			new Setting(this.containerEl)
 				.setName("Unable to sync.")
-				.setDesc(this.unavailable ?? "Plugback is not running.");
+				.setDesc(this.unavailable ?? "Plugback couldn’t start.");
 			return;
 		}
 		const root = this.containerEl.createDiv({ cls: "plugback-settings" });
@@ -138,7 +141,7 @@ export class PlugbackSettingTab extends PluginSettingTab {
 			},
 		};
 		const issues = {
-			name: "Failed changes",
+			name: "Couldn’t sync",
 			searchable: false,
 			render: (setting: Setting) => {
 				setting.settingEl.addClass("plugback-issues");
@@ -150,7 +153,7 @@ export class PlugbackSettingTab extends PluginSettingTab {
 						const item = setting.descEl.createDiv({ cls: "plugback-issue" });
 						item.createDiv({
 							cls: "plugback-issue-title",
-							text: `Could not ${action.present ? "install" : "remove"} ${action.kind} ${action.id}.`,
+							text: `Couldn’t ${action.present ? "install" : "remove"} ${action.kind} ${action.id}.`,
 						});
 						item.createDiv({ text: issue.message });
 					}
@@ -179,29 +182,26 @@ export class PlugbackSettingTab extends PluginSettingTab {
 				return this.watch((snapshot) => {
 					const wanted = snapshot.data?.[kind] ?? [];
 					const local = snapshot.installed?.[kind] ?? new Map<string, string>();
+					const unavailable =
+						kind === "plugins" ? "Plugin list unavailable." : "Theme list unavailable.";
 					count.setText(
-						!snapshot.installed
-							? "Not checked yet."
-							: !snapshot.data
-								? "Sync data unavailable."
-								: counts(wanted, local),
+						!snapshot.installed ? "" : !snapshot.data ? unavailable : counts(wanted, local),
 					);
 					const scrollTop = list.scrollTop;
 					list.empty();
 					if (!snapshot.installed || !snapshot.data) {
-						list.createEl("p", {
-							cls: "plugback-empty",
-							text: !snapshot.installed
-								? "Run a check to load the list."
-								: "Sync data unavailable.",
-						});
+						if (snapshot.installed)
+							list.createEl("p", {
+								cls: "plugback-empty",
+								text: unavailable,
+							});
 						return;
 					}
 					const ids = [...wanted].sort((a, b) =>
 						(local.get(a) ?? a).localeCompare(local.get(b) ?? b),
 					);
 					if (!ids.length)
-						list.createEl("p", { cls: "plugback-empty", text: `No synced ${kind}.` });
+						list.createEl("p", { cls: "plugback-empty", text: `No ${kind} to sync.` });
 					for (const id of ids) {
 						const row = list.createDiv({ cls: "plugback-extension" });
 						const label = row.createDiv({ cls: "plugback-extension-label" });
@@ -217,8 +217,8 @@ export class PlugbackSettingTab extends PluginSettingTab {
 			},
 		}));
 		const add = {
-			name: "Add local extensions",
-			desc: "Include plugins and themes already installed on this device.",
+			name: "Add from this device",
+			desc: "Include installed plugins and themes in sync.",
 			render: (setting: Setting) => {
 				let button: ButtonComponent;
 				setting.addButton((control) => {

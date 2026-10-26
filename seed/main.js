@@ -33,7 +33,7 @@ class PlugbackSeed extends Plugin {
 					const message = error?.message ?? String(error);
 					if (this.#alive && message !== this.#lastError) {
 						this.#lastError = message;
-						new Notice(`Plugback setup failed: ${message}`, 8000);
+						new Notice(`Plugback: setup failed: ${message}`, 8000);
 					}
 				})
 				.finally(() => {
@@ -61,7 +61,8 @@ class PlugbackSeed extends Plugin {
 		let installed = false;
 		if (await adapter.exists(manifestPath)) {
 			existing = JSON.parse(await adapter.read(manifestPath));
-			if (!this.#valid(existing)) throw new Error("Invalid Plugback manifest.");
+			if (!this.#valid(existing))
+				throw new Error("Plugback’s saved installation information is invalid.");
 			installed =
 				(!this.#pending || existing.version === this.#pending.version) &&
 				requireApiVersion(existing.minAppVersion) &&
@@ -80,28 +81,29 @@ class PlugbackSeed extends Plugin {
 			});
 			if (!this.#alive) return;
 			manifest = response.json;
-			if (!this.#valid(manifest)) throw new Error("Invalid release manifest.");
+			if (!this.#valid(manifest))
+				throw new Error("Plugback’s downloaded installation information is invalid.");
 		}
 		if (!requireApiVersion(manifest.minAppVersion))
-			throw new Error(`Requires Obsidian ${manifest.minAppVersion}.`);
+			throw new Error(`Obsidian ${manifest.minAppVersion} or newer is required.`);
 		const manager = this.app.plugins;
 		if (
 			typeof manager?.enablePluginAndSave !== "function" ||
 			(!installed && typeof manager.installPlugin !== "function")
 		) {
-			throw new Error("Plugin manager unavailable.");
+			throw new Error("couldn’t access Obsidian’s plugins.");
 		}
 		if (!installed) {
 			this.#pending = manifest;
 			await manager.installPlugin(REPO, manifest.version, manifest);
 			if (!this.#alive) return;
 			if (!(await adapter.exists(mainPath)) || !(await adapter.exists(manifestPath)))
-				throw new Error("Incomplete Plugback installation.");
+				throw new Error("Plugback’s installation didn’t finish.");
 			const written = JSON.parse(await adapter.read(manifestPath));
 			if (!(await adapter.read(mainPath)).trim() || !this.#valid(written))
-				throw new Error("Invalid Plugback installation.");
+				throw new Error("Plugback’s installed files are invalid.");
 			if (written.version !== manifest.version || !requireApiVersion(written.minAppVersion)) {
-				throw new Error("Plugback release mismatch.");
+				throw new Error("the installed Plugback version doesn’t match the requested version.");
 			}
 		}
 		if (!this.#alive) return;

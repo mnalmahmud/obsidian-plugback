@@ -15,7 +15,7 @@ Requires Obsidian **1.8.7 or newer**.
 3. Add the [Git ignore rules](#git-setup) below, then enable Plugback in Obsidian.
 4. Commit and push your vault, including your Obsidian settings and `data.json`.
 
-If `data.json` does not exist, Plugback creates it from this device's installed community plugins and themes.
+If `data.json` doesn’t exist, Plugback creates it from this device's installed community plugins and themes.
 
 Plugback also creates and enables **Plugback Seed** in `.obsidian/plugins/plugback-seed/`. The seed is a small, minified loader that downloads Plugback when its code is missing. Automatic setup on another device requires a published Plugback release on GitHub.
 
@@ -41,12 +41,12 @@ Add these rules to your vault's `.gitignore`:
 
 Git keeps plugin settings, Plugback's `data.json`, and the seed's files. Downloaded plugin code and theme files are ignored. Your other Obsidian settings, including enabled plugins and the selected theme, should remain tracked.
 
-Use your vault's configuration folder in place of `.obsidian` if you changed it. Ignore rules do not untrack files already committed to Git.
+Use your vault's configuration folder in place of `.obsidian` if you changed it. Ignore rules don’t untrack files already committed to Git.
 
 ## Sync behavior
 
 - Installing or removing a community plugin or theme in Obsidian updates `data.json`.
-- Existing complete installations keep their versions. Plugback does not synchronize versions or update installed extensions.
+- Existing complete installations keep their versions. Plugback doesn’t synchronize versions or update installed extensions.
 - Enabled plugins and the selected theme follow Obsidian's settings.
 - Empty plugin and theme arrays in `data.json` remove all managed extensions.
 - Plugback and Plugback Seed are excluded from extension sync.
@@ -59,7 +59,7 @@ To keep an unlisted extension in Git, unignore its folder, for example `!.obsidi
 
 For independently configured devices, initialize Plugback on each before exchanging their `data.json` files, then merge those files with Git.
 
-The **Add** button under **Add local extensions** includes this device's installed community plugins and themes in sync while keeping existing entries. Use it before bringing in another device's `data.json`; once that file arrives, ordinary sync follows its contents and removes managed local extras.
+The **Add** button under **Add from this device** includes this device's installed community plugins and themes in sync while keeping existing entries. Use it before bringing in another device's `data.json`; once that file arrives, ordinary sync follows its contents and removes managed local extras.
 
 ### Recovery
 

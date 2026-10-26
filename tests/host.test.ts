@@ -9,7 +9,6 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { transformSync } from "esbuild";
 
-// Manager behavior runs without Obsidian; actual host wiring is exercised by main.test.ts.
 const runtimeStub = `
 export class Notice {}
 export const Platform = { isMobile: false };
@@ -319,6 +318,33 @@ void test("activation preserves disabled plugins and honors lifetime after inspe
 	f.calls.length = 0;
 	await f.extensions.restoreActivation(() => false);
 	assert.equal(f.calls.length, 0);
+});
+
+void test("activation errors identify whether enabling plugins or applying the theme failed", async () => {
+	const f = hostFixture();
+	f.files.put("plugin", "one");
+	f.files.put("theme", "Minimal");
+	f.files.content.set(".config/community-plugins.json", '["one"]');
+	f.files.content.set(".config/appearance.json", '{"cssTheme":"Minimal"}');
+	f.manager.enablePlugin = async () => {
+		throw new Error("Plugin failed");
+	};
+	await assert.rejects(
+		f.extensions.restoreActivation(() => true),
+		{
+			message: "couldn’t enable your restored plugins: Plugin failed",
+		},
+	);
+	f.files.content.set(".config/community-plugins.json", "[]");
+	f.themeManager.setTheme = () => {
+		throw new Error("Theme failed");
+	};
+	await assert.rejects(
+		f.extensions.restoreActivation(() => true),
+		{
+			message: "couldn’t apply your restored theme: Theme failed",
+		},
+	);
 });
 
 void test("inspection distinguishes runnable extensions from settings-only folders", async () => {

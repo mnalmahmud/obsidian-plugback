@@ -173,7 +173,7 @@ void test("production bundle starts, installs missing bytes, preserves settings,
 	assert.ok(seedCode.length < readFileSync("seed/main.js", "utf8").length);
 	assert.equal(seedCode.trim().split("\n").length, 1);
 	assert.ok(f.calls.includes("install:one"));
-	assert.deepEqual(f.notices, ["Plugback synchronized 1 extension."]);
+	assert.deepEqual(f.notices, ["Plugback: synced 1 plugin."]);
 	assert.ok(f.calls.includes("enable:one"));
 	assert.equal(f.files.content.get(".custom/plugins/one/data.json"), '{"user":"settings"}');
 	const originalData = f.files.content.get(".custom/plugins/plugback/data.json");
@@ -225,7 +225,7 @@ void test("production bundle repairs empty plugin code without replacing its set
 	f.ready();
 	await f.plugin.check();
 	assert.ok(f.calls.includes("install:one"));
-	assert.deepEqual(f.notices, ["Plugback repaired 1 installation."]);
+	assert.deepEqual(f.notices, ["Plugback: repaired 1 plugin."]);
 	assert.ok(f.calls.includes("enable:one"));
 	assert.ok(f.files.content.get(".custom/plugins/one/main.js"));
 	assert.equal(f.files.content.get(".custom/plugins/one/data.json"), '{"user":"settings"}');

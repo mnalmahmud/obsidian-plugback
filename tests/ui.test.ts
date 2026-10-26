@@ -5,7 +5,6 @@ import { build } from "esbuild";
 import type { Snapshot } from "../src/data.ts";
 import { fixture } from "./helpers.ts";
 
-// Only the DOM and settings methods used by the view.
 class Element {
 	children: Element[] = [];
 	controls: Button[] = [];
@@ -62,17 +61,12 @@ interface Button {
 }
 class Setting {
 	settingEl: Element;
-	private readonly controls: Button[];
 	nameEl: Element;
 	descEl: Element;
 	constructor(el: Element) {
 		this.settingEl = el.createDiv({ cls: "setting-item" });
-		this.controls = this.settingEl.controls;
 		this.nameEl = this.settingEl.createDiv({ cls: "setting-item-name" });
 		this.descEl = this.settingEl.createDiv({ cls: "setting-item-description" });
-	}
-	setHeading(): this {
-		return this;
 	}
 	setName(text: string): this {
 		this.nameEl.setText(text);
@@ -84,7 +78,7 @@ class Setting {
 	}
 	addButton(callback: (button: object) => void): this {
 		const state: Button = { text: "", disabled: false, click: () => {} };
-		this.controls.push(state);
+		this.settingEl.controls.push(state);
 		const button = {
 			setButtonText(text: string) {
 				state.text = text;
@@ -232,19 +226,23 @@ void test("actions are disabled during a running check", () => {
 void test("status is derived from typed state and preserves actionable storage guidance", async () => {
 	const f = fixture();
 	const core = f.core();
-	assert.equal(ui.statusText(core.snapshot).title, "Not checked.");
+	assert.equal(ui.statusText(core.snapshot).title, "");
+	assert.equal(ui.statusText(core.snapshot).description, "");
 	await core.check();
 	assert.equal(ui.statusText(core.snapshot).title, "Up to date.");
 	const snapshot = core.snapshot;
 	snapshot.phase = "error";
 	snapshot.error = {
 		code: "missing-data",
-		message: "data.json is missing. Restore it from Git or another device.",
+		message: "Your saved plugin and theme list is missing. Restore it to continue syncing.",
 	};
 	assert.equal(ui.statusText(snapshot).title, "Unable to sync.");
 	assert.equal(ui.statusText(snapshot).description, snapshot.error.message);
 	snapshot.error = { code: "invalid-data", message: "Invalid" };
-	assert.match(ui.statusText(snapshot).description, /conflict/);
+	assert.match(
+		ui.statusText(snapshot).description,
+		/Check your vault’s sync for errors, then check again\./,
+	);
 });
 void test("counts include only synced extensions and show missing only when needed", () => {
 	assert.equal(
@@ -306,11 +304,11 @@ void test("snapshot updates retain controls and open inventories while showing f
 	assert.equal(check!.disabled, false);
 	const issues = root.find("plugback-issues")!;
 	assert.equal(issues.hidden, false);
-	assert.match(issues.content, /Could not install plugin p2.*Download failed/);
+	assert.match(issues.content, /Couldn’t install plugin p2.*Download failed/);
 	assert.ok(
 		root.children.indexOf(issues) < root.children.indexOf(root.find("plugback-inventory-row")!),
 	);
-	assert.match(root.find("plugback-status")!.content, /Check incomplete/);
+	assert.match(root.find("plugback-status")!.content, /Sync finished with errors/);
 	snapshot.issues = [];
 	render(snapshot);
 	assert.equal(issues.hidden, true);
@@ -322,7 +320,7 @@ void test("inventories show only synced plugins and themes, including missing en
 	const core = f.core();
 	const { tab, render } = settingsFixture(core.snapshot);
 	tab.display();
-	assert.match(tab.containerEl.content, /Not checked yet/);
+	assert.doesNotMatch(tab.containerEl.content, /Not checked yet|Run a check to load the list/);
 	assert.doesNotMatch(tab.containerEl.content, /0 installed/);
 	await core.check();
 	const snapshot = core.snapshot;
@@ -354,12 +352,13 @@ void test("inventories show only synced plugins and themes, including missing en
 	assert.match(tab.containerEl.content, /missing Missing/);
 	snapshot.data = { schemaVersion: 1, plugins: [], themes: [] };
 	render(snapshot);
-	assert.match(tab.containerEl.content, /No synced plugins/);
-	assert.match(tab.containerEl.content, /No synced themes/);
+	assert.match(tab.containerEl.content, /No plugins to sync/);
+	assert.match(tab.containerEl.content, /No themes to sync/);
 	assert.doesNotMatch(tab.containerEl.content, /One|Synced Theme|Custom|Two|Local Theme/);
 	snapshot.data = null;
 	render(snapshot);
-	assert.match(tab.containerEl.content, /Sync data unavailable/);
+	assert.match(tab.containerEl.content, /Plugin list unavailable/);
+	assert.match(tab.containerEl.content, /Theme list unavailable/);
 	assert.doesNotMatch(tab.containerEl.content, /One|Synced Theme|Custom|Two|Local Theme/);
 	tab.hide();
 });
@@ -372,10 +371,10 @@ void test("declarative settings render independent searchable rows without neste
 	assert.equal(groups.length, 3);
 	assert.deepEqual(Array.from(groups.flatMap((group) => group.items.map((item) => item.name))), [
 		"Sync",
-		"Failed changes",
+		"Couldn’t sync",
 		"Plugins",
 		"Themes",
-		"Add local extensions",
+		"Add from this device",
 	]);
 	assert.deepEqual(Array.from(groups[0]!.items[0]!.aliases!), ["Check now"]);
 	assert.equal(f.scans, 0);
@@ -405,9 +404,13 @@ void test("declarative settings render independent searchable rows without neste
 	const plugins = rows.find((row) => row.name === "Plugins")!;
 	const before = plugins.setting.settingEl.content;
 	plugins.cleanup();
+	f.data = { schemaVersion: 1, plugins: ["p1", "p2"], themes: ["Minimal"] };
+	await core.check();
+	assert.equal(plugins.setting.settingEl.content, before);
+	assert.match(rows.find((row) => row.name === "Themes")!.setting.settingEl.content, /1 installed/);
 	core.stop();
 	assert.equal(plugins.setting.settingEl.content, before);
-	assert.match(rows[0]!.setting.settingEl.content, /Stopped/);
+	assert.match(rows[0]!.setting.settingEl.content, /Up to date/);
 	for (const row of rows) row.cleanup();
 	tab.hide();
 });

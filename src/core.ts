@@ -11,6 +11,7 @@ import {
 	mergeIntents,
 	plan,
 	problem,
+	noticeMessage,
 	SyncError,
 	type Action,
 	type DeviceState,
@@ -21,6 +22,8 @@ import {
 	type Snapshot,
 	type NativeEvent,
 } from "./data.ts";
+
+const MISSING_LIST = "Your saved plugin and theme list is missing. Restore it to continue syncing.";
 
 export class Core {
 	private stopped = false;
@@ -88,7 +91,7 @@ export class Core {
 		this.nativeOperations = 0;
 		this.generation++;
 		this.dirty = false;
-		this.publish({ phase: "stopped" });
+		this.view = { ...this.view, phase: "stopped" };
 		this.listeners.clear();
 	}
 	invalidate(): void {
@@ -136,7 +139,6 @@ export class Core {
 		return this.job;
 	}
 
-	/** Include this device's installed community extensions in sync. */
 	consolidate(): Promise<void> {
 		if (this.stopped) {
 			return Promise.resolve();
@@ -179,7 +181,7 @@ export class Core {
 					this.device = this.services.device.read();
 					this.loadFailed = false;
 					this.deviceDirty = false;
-					// Reassign buffered changes after the saved journal's sequence.
+					// Sequence buffered changes after the recovered changes.
 					for (const intent of buffered) this.record(intent.kind, intent.id, intent.present);
 				}
 				this.persist();
@@ -232,10 +234,7 @@ export class Core {
 		let data = await services.shared.read();
 		this.require(guard);
 		if (!data && this.device.initialized) {
-			throw new SyncError(
-				"missing-data",
-				"data.json is missing. Restore it from Git or another device.",
-			);
+			throw new SyncError("missing-data", MISSING_LIST);
 		}
 		let installed = await this.scan(guard);
 		if (!data && !this.device.initialized && !this.mergeRequested) {
@@ -253,7 +252,7 @@ export class Core {
 			const additions = consolidating ? this.captureInstalled(installed) : null;
 			data = await services.shared.update((current) => {
 				if (!current && (hadData || this.device.initialized || !consolidating)) {
-					throw new SyncError("missing-data", "data.json disappeared while saving local changes.");
+					throw new SyncError("missing-data", MISSING_LIST);
 				}
 				const next = mergeIntents(
 					current ?? createData([], [], services.selfId),
@@ -283,10 +282,7 @@ export class Core {
 			this.mergeRequested = false;
 		}
 		if (!data) {
-			throw new SyncError(
-				"missing-data",
-				"data.json is missing. Restore it from Git or another device.",
-			);
+			throw new SyncError("missing-data", MISSING_LIST);
 		}
 		this.require(guard);
 		const actions = plan(data, installed);
@@ -300,8 +296,8 @@ export class Core {
 			installed,
 			issues: [...issues.values()],
 		});
-		let changed = 0;
-		let repaired = 0;
+		const changed = { plugin: 0, theme: 0 };
+		const repaired = { plugin: 0, theme: 0 };
 		for (const action of actions) {
 			this.require(guard);
 			try {
@@ -319,7 +315,7 @@ export class Core {
 				const latest = await services.shared.read();
 				this.require(guard);
 				if (!latest) {
-					throw new SyncError("missing-data", "data.json disappeared during sync.");
+					throw new SyncError("missing-data", MISSING_LIST);
 				}
 				const wanted = (action.kind === "plugin" ? latest.plugins : latest.themes).includes(
 					action.id,
@@ -336,13 +332,15 @@ export class Core {
 					throw new SyncError(
 						"operation",
 						action.present
-							? "Installation is incomplete."
-							: "Extension is still installed after removal.",
+							? "The installation didn’t finish."
+							: action.kind === "plugin"
+								? "The plugin couldn’t be removed."
+								: "The theme couldn’t be removed.",
 					);
 				}
 				issues.delete(key(action));
-				if (action.present && prepared.repair) repaired++;
-				else changed++;
+				if (action.present && prepared.repair) repaired[action.kind]++;
+				else changed[action.kind]++;
 			} catch (error) {
 				if (
 					error instanceof Interrupted ||
@@ -351,6 +349,10 @@ export class Core {
 				) {
 					throw error;
 				}
+				console.error(
+					`[Plugback] Couldn’t ${action.present ? "install" : "remove"} ${action.kind} ${action.id}`,
+					error,
+				);
 				issues.set(key(action), { action, ...problem(error, "operation") });
 			}
 		}
@@ -360,10 +362,9 @@ export class Core {
 			try {
 				await services.activate(guard);
 			} catch (error) {
-				throw new SyncError(
-					"operation",
-					`Could not restore enabled plugins or the active theme: ${problem(error, "operation").message}`,
-				);
+				throw error instanceof SyncError
+					? error
+					: new SyncError("operation", problem(error, "operation").message, error);
 			}
 			this.require(guard);
 		}
@@ -375,15 +376,16 @@ export class Core {
 			error: null,
 			lastChecked: services.now(),
 		});
-		if (changed) {
-			services.notify(
-				`Plugback synchronized ${changed} ${changed === 1 ? "extension" : "extensions"}.`,
-			);
-		}
-		if (repaired) {
-			services.notify(
-				`Plugback repaired ${repaired} ${repaired === 1 ? "installation" : "installations"}.`,
-			);
+		for (const [verb, counts] of [
+			["synced", changed],
+			["repaired", repaired],
+		] as const) {
+			const parts = [];
+			for (const kind of ["plugin", "theme"] as const) {
+				const count = counts[kind];
+				if (count) parts.push(`${count} ${kind}${count === 1 ? "" : "s"}`);
+			}
+			if (parts.length) services.notify(`Plugback: ${verb} ${parts.join(" and ")}.`);
 		}
 	}
 	private captureInstalled(installed: Installed): Data {
@@ -397,12 +399,13 @@ export class Core {
 		const failure = problem(error, "storage");
 		this.publish({ phase: "error", error: failure });
 		if (failure.message !== this.lastNotice) {
+			console.error("[Plugback] Sync failed", error);
 			this.lastNotice = failure.message;
-			this.services.notify(`Plugback: ${failure.message}`);
+			this.services.notify(`Plugback: sync failed: ${noticeMessage(error)}`);
 		}
 	}
 	private publish(change: Partial<Omit<Snapshot, "initialized">>): void {
-		if (this.stopped && change.phase !== "stopped") {
+		if (this.stopped) {
 			return;
 		}
 		this.view = { ...this.view, ...change };

@@ -15,8 +15,36 @@ import {
 	SyncError,
 	LocalDevice,
 	SharedFile,
+	DataError,
+	noticeMessage,
 } from "../src/data.ts";
 import { Files } from "./helpers.ts";
+
+void test("notices lowercase owned errors while preserving settings text, proper names, and external errors", () => {
+	const damaged = new DataError("Your sync list is damaged.");
+	assert.equal(
+		noticeMessage(new SyncError("invalid-data", damaged.message, damaged)),
+		"your sync list is damaged.",
+	);
+	assert.equal(damaged.message, "Your sync list is damaged.");
+	assert.equal(
+		noticeMessage(new SyncError("directory", "Network request failed (HTTP 404).")),
+		"network request failed (HTTP 404).",
+	);
+	for (const message of [
+		"Plugback couldn’t read your unsynced changes.",
+		"Obsidian 1.8.7 or newer is required.",
+	]) {
+		assert.equal(noticeMessage(new SyncError("operation", message)), message);
+	}
+	const external = new Error("EIO: Disk unavailable");
+	assert.equal(noticeMessage(external), external.message);
+	assert.equal(
+		noticeMessage(new SyncError("operation", external.message, external)),
+		external.message,
+	);
+	assert.equal(noticeMessage("HTTP request rejected"), "HTTP request rejected");
+});
 
 void test("shared data rejects unsupported schemas, unsafe names, duplicates, self, and conflicts", () => {
 	for (const raw of [

@@ -344,7 +344,7 @@ void test("an event after transaction commit but before its promise resolves is 
 	assert.equal(f.device.pending.length, 0);
 });
 
-void test("Add local extensions merges installed community extensions without removing existing entries", async () => {
+void test("Add from this device merges installed community extensions without removing existing entries", async () => {
 	const f = fixture();
 	f.plugins.set("p2", "Two");
 	f.plugins.set("custom", "Custom");
@@ -566,9 +566,33 @@ void test("repairs and sync changes have separate success counts", async () => {
 	};
 	await f.core().check();
 	assert.deepEqual(f.notifications, [
-		"Plugback synchronized 1 extension.",
-		"Plugback repaired 2 installations.",
+		"Plugback: synced 1 plugin.",
+		"Plugback: repaired 1 plugin and 1 theme.",
 	]);
+});
+
+void test("success notices name plugins and themes, pluralize counts, and omit zero counts", async () => {
+	for (const repair of [false, true]) {
+		for (const [plugins, themes, expected] of [
+			[["p1", "p2"], [], "2 plugins"],
+			[[], ["Minimal"], "1 theme"],
+			[[], ["Minimal", "Things"], "2 themes"],
+			[["p1", "p2"], ["Minimal"], "2 plugins and 1 theme"],
+		] as const) {
+			const f = fixture();
+			f.plugins.clear();
+			f.data = createData(plugins, themes, "plugback");
+			const prepare = f.services.extensions.prepare.bind(f.services.extensions);
+			f.services.extensions.prepare = async (action) => {
+				const prepared = await prepare(action);
+				return "run" in prepared ? { ...prepared, repair } : prepared;
+			};
+			await f.core().check();
+			assert.deepEqual(f.notifications, [
+				`Plugback: ${repair ? "repaired" : "synced"} ${expected}.`,
+			]);
+		}
+	}
 });
 
 void test("a failed repair does not produce a success notice", async () => {
@@ -588,7 +612,7 @@ void test("a failed repair does not produce a success notice", async () => {
 	assert.deepEqual(f.notifications, []);
 	f.hooks.run = null;
 	await core.check();
-	assert.deepEqual(f.notifications, ["Plugback repaired 1 installation."]);
+	assert.deepEqual(f.notifications, ["Plugback: repaired 1 plugin."]);
 });
 
 void test("activation failure preserves the latest inventory and clears repaired operation errors", async () => {

@@ -133,6 +133,36 @@ void test("mobile falls back past desktop-only releases and accepts v-prefixed t
 		assert.equal(result.installVersion, "v1.0.0");
 	}
 });
+void test("invalid metadata and identity mismatches are rejected before resolving releases", async () => {
+	for (const kind of ["plugin", "theme"] as const) {
+		const f = registry();
+		const url =
+			kind === "plugin"
+				? "https://raw.githubusercontent.com/owner/one/HEAD/manifest.json"
+				: "https://raw.githubusercontent.com/owner/theme/stable/manifest.json";
+		const valid =
+			kind === "plugin"
+				? plugin()
+				: { name: "Minimal", author: "A", version: "1.0.0", minAppVersion: "1.0.0" };
+		const resolve = () =>
+			kind === "plugin" ? f.instance.resolvePlugin("one") : f.instance.resolveTheme("Minimal");
+		f.replies.set(url, { ...valid, version: "invalid" });
+		assert.deepEqual(await resolve(), {
+			ok: false,
+			reason: `The ${kind}’s information is invalid.`,
+		});
+		f.replies.set(url, { ...valid, [kind === "plugin" ? "id" : "name"]: "wrong" });
+		assert.deepEqual(await resolve(), {
+			ok: false,
+			reason: `The ${kind}’s information identifies a different ${kind}.`,
+		});
+		assert.equal(
+			f.calls.some((url) => url.includes("/releases/download/")),
+			false,
+		);
+	}
+});
+
 void test("unpublished versions, wrong identities, and mismatched release versions are rejected", async () => {
 	const f = registry();
 	f.replies.set("https://raw.githubusercontent.com/owner/one/HEAD/manifest.json", plugin());
