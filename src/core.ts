@@ -332,10 +332,8 @@ export class Core {
 					throw new SyncError(
 						"operation",
 						action.present
-							? "The installation didn’t finish."
-							: action.kind === "plugin"
-								? "The plugin couldn’t be removed."
-								: "The theme couldn’t be removed.",
+							? `The ${action.kind} installation didn’t finish.`
+							: `The ${action.kind} couldn’t be removed.`,
 					);
 				}
 				issues.delete(key(action));

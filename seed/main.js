@@ -60,10 +60,17 @@ class PlugbackSeed extends Plugin {
 		let existing = null;
 		let installed = false;
 		if (await adapter.exists(manifestPath)) {
-			existing = JSON.parse(await adapter.read(manifestPath));
-			if (!this.#valid(existing))
-				throw new Error("Plugback’s saved installation information is invalid.");
+			const text = await adapter.read(manifestPath);
+			try {
+				existing = JSON.parse(text);
+				if (!this.#valid(existing))
+					throw new Error("Plugback’s saved installation information is invalid.");
+			} catch (error) {
+				if (!this.#pending) throw error;
+				existing = null;
+			}
 			installed =
+				!!existing &&
 				(!this.#pending || existing.version === this.#pending.version) &&
 				requireApiVersion(existing.minAppVersion) &&
 				(await adapter.exists(mainPath)) &&

@@ -782,6 +782,41 @@ void test("standalone seed retries the selected release after incompatible insta
 	}
 });
 
+void test("standalone seed repairs malformed metadata from its own failed install attempt", async (t) => {
+	for (const contents of ["{", '{"id":"wrong"}', '{"id":"plugback","version":null}']) {
+		const f = seedFixture();
+		const install = t.mock.method(f.manager, "installPlugin", async () => {
+			f.files.put("plugin", "plugback");
+			f.files.content.set(".config/plugins/plugback/manifest.json", contents);
+		});
+		await f.seed.check();
+		assert.deepEqual(f.calls, []);
+		install.mock.restore();
+		if (contents === "{") {
+			f.files.beforeRead = () => {
+				throw new Error("Disk unavailable");
+			};
+			await f.seed.check();
+			assert.deepEqual(f.versions, []);
+			f.files.beforeRead = null;
+		}
+		await f.seed.check();
+		assert.deepEqual(f.versions, ["1.0.0"]);
+		assert.deepEqual(f.calls, ["install", "enable"]);
+	}
+});
+
+void test("standalone seed preserves invalid installation metadata it did not write", async () => {
+	for (const contents of ["{", '{"id":"wrong"}']) {
+		const f = seedFixture();
+		const path = ".config/plugins/plugback/manifest.json";
+		f.files.content.set(path, contents);
+		await f.seed.check();
+		assert.deepEqual(f.calls, []);
+		assert.equal(f.files.content.get(path), contents);
+	}
+});
+
 void test("standalone seed leaves an existing complete installation disabled", async () => {
 	const f = seedFixture();
 	f.files.put("plugin", "plugback");
