@@ -18,14 +18,16 @@ class Element {
 	hidden = false;
 	cls = "";
 	addClass(cls: string): void {
-		this.cls = cls;
+		this.cls = [...new Set([...this.cls.split(" "), cls])].filter(Boolean).join(" ");
 	}
 	setText(text: string): void {
 		this.text = text;
 	}
 	setAttribute(_name: string, _value: string): void {}
 	find(cls: string): Element | undefined {
-		return this.cls === cls ? this : this.children.map((child) => child.find(cls)).find(Boolean);
+		return this.cls.split(" ").includes(cls)
+			? this
+			: this.children.map((child) => child.find(cls)).find(Boolean);
 	}
 	get content(): string {
 		return [this.text, ...this.children.map((child) => child.content)].join(" ");
@@ -64,10 +66,10 @@ class Setting {
 	nameEl: Element;
 	descEl: Element;
 	constructor(el: Element) {
-		this.settingEl = el;
-		this.controls = el.controls;
-		this.nameEl = el.createDiv();
-		this.descEl = el.createDiv();
+		this.settingEl = el.createDiv({ cls: "setting-item" });
+		this.controls = this.settingEl.controls;
+		this.nameEl = this.settingEl.createDiv({ cls: "setting-item-name" });
+		this.descEl = this.settingEl.createDiv({ cls: "setting-item-description" });
 	}
 	setHeading(): this {
 		return this;
@@ -134,12 +136,41 @@ const ui = mod.exports as {
 		display(): void;
 		hide(): void;
 		getSettingDefinitions(): Array<{
-			name: string;
-			aliases: string[];
-			render(setting: Setting): () => void;
+			type: "group";
+			cls: string;
+			items: Array<{
+				name: string;
+				desc?: string;
+				aliases?: string[];
+				render(setting: Setting): () => void;
+			}>;
 		}>;
 	};
 };
+function settingsFixture(snapshot: Snapshot) {
+	const listeners = new Set<(snapshot: Snapshot) => void>();
+	const tab = new ui.PlugbackSettingTab(
+		{},
+		{},
+		{
+			snapshot,
+			subscribe(listener: (snapshot: Snapshot) => void) {
+				listeners.add(listener);
+				return () => {
+					listeners.delete(listener);
+				};
+			},
+		},
+		null,
+	);
+	return {
+		tab,
+		render: (next: Snapshot) => {
+			for (const listener of listeners) listener(next);
+		},
+	};
+}
+
 function click(tab: { containerEl: Element }, text: string): void {
 	const button = tab.containerEl.buttons.findLast((button) => button.text === text);
 	assert.ok(button, `Missing ${text}`);
@@ -165,8 +196,8 @@ void test("settings subscribe only while visible and read snapshots without insp
 	const tab = new ui.PlugbackSettingTab({}, {}, proxy, null);
 	tab.display();
 	tab.hide();
-	assert.equal(subscribed, 1);
-	assert.equal(unsubscribed, 1);
+	assert.ok(subscribed > 0);
+	assert.equal(unsubscribed, subscribed);
 	assert.equal(f.scans, 0);
 });
 void test("settings provide Check now and a single additive consolidation action", async () => {
@@ -243,19 +274,7 @@ void test("snapshot updates retain controls and open inventories while showing f
 	const ids = Array.from({ length: 30 }, (_, i) => `p${i + 1}`);
 	snapshot.data!.plugins = ids;
 	snapshot.installed!.plugins = new Map(ids.map((id) => [id, id]));
-	let render: ((snapshot: Snapshot) => void) | undefined;
-	const tab = new ui.PlugbackSettingTab(
-		{},
-		{},
-		{
-			snapshot,
-			subscribe(listener: (snapshot: Snapshot) => void) {
-				render = listener;
-				return () => {};
-			},
-		},
-		null,
-	);
+	const { tab, render } = settingsFixture(snapshot);
 	tab.display();
 	const root = tab.containerEl.find("plugback-settings")!;
 	const inventory = root.find("plugback-inventory")!;
@@ -264,7 +283,7 @@ void test("snapshot updates retain controls and open inventories while showing f
 	list.scrollTop = 120;
 	const check = tab.containerEl.buttons[0];
 	snapshot.phase = "checking";
-	render!(snapshot);
+	render(snapshot);
 	assert.equal(tab.containerEl.buttons.length, 2);
 	assert.equal(tab.containerEl.buttons[0], check);
 	assert.equal(check!.disabled, true);
@@ -279,17 +298,17 @@ void test("snapshot updates retain controls and open inventories while showing f
 			message: "Download failed",
 		},
 	];
-	render!(snapshot);
+	render(snapshot);
 	assert.equal(check!.disabled, false);
 	const issues = root.find("plugback-issues")!;
 	assert.equal(issues.hidden, false);
 	assert.match(issues.content, /Could not install plugin p2.*Download failed/);
 	assert.ok(
-		root.children.indexOf(issues) < root.children.indexOf(root.find("plugback-inventories")!),
+		root.children.indexOf(issues) < root.children.indexOf(root.find("plugback-inventory-row")!),
 	);
 	assert.match(root.find("plugback-status")!.content, /Check incomplete/);
 	snapshot.issues = [];
-	render!(snapshot);
+	render(snapshot);
 	assert.equal(issues.hidden, true);
 	tab.hide();
 });
@@ -297,19 +316,7 @@ void test("snapshot updates retain controls and open inventories while showing f
 void test("inventories show only synced plugins and themes, including missing entries", async () => {
 	const f = fixture();
 	const core = f.core();
-	let render: ((snapshot: Snapshot) => void) | undefined;
-	const tab = new ui.PlugbackSettingTab(
-		{},
-		{},
-		{
-			snapshot: core.snapshot,
-			subscribe(listener: (snapshot: Snapshot) => void) {
-				render = listener;
-				return () => {};
-			},
-		},
-		null,
-	);
+	const { tab, render } = settingsFixture(core.snapshot);
 	tab.display();
 	assert.match(tab.containerEl.content, /Not checked yet/);
 	assert.doesNotMatch(tab.containerEl.content, /0 installed/);
@@ -334,7 +341,7 @@ void test("inventories show only synced plugins and themes, including missing en
 		managedPlugins: new Set(["p1", "p2"]),
 		managedThemes: new Set(["Synced Theme", "Local Theme"]),
 	};
-	render!(snapshot);
+	render(snapshot);
 	assert.match(tab.containerEl.content, /1 installed · 1 missing/);
 	assert.match(tab.containerEl.content, /One p1 Installed/);
 	assert.match(tab.containerEl.content, /Synced Theme Installed/);
@@ -342,40 +349,61 @@ void test("inventories show only synced plugins and themes, including missing en
 	assert.doesNotMatch(tab.containerEl.content, /Custom|Two|Local Theme/);
 	assert.match(tab.containerEl.content, /missing Missing/);
 	snapshot.data = { schemaVersion: 1, plugins: [], themes: [] };
-	render!(snapshot);
+	render(snapshot);
 	assert.match(tab.containerEl.content, /No synced plugins/);
 	assert.match(tab.containerEl.content, /No synced themes/);
 	assert.doesNotMatch(tab.containerEl.content, /One|Synced Theme|Custom|Two|Local Theme/);
 	snapshot.data = null;
-	render!(snapshot);
+	render(snapshot);
 	assert.match(tab.containerEl.content, /Sync data unavailable/);
 	assert.doesNotMatch(tab.containerEl.content, /One|Synced Theme|Custom|Two|Local Theme/);
 	tab.hide();
 });
 
-void test("declarative settings are searchable and mount the live view with cleanup", async () => {
+void test("declarative settings render independent searchable rows without nested settings", async () => {
 	const f = fixture();
 	const core = f.core();
 	const tab = new ui.PlugbackSettingTab({}, {}, core, null);
-	const definitions = tab.getSettingDefinitions();
-	assert.equal(definitions[0]!.name, "Sync");
-	assert.deepEqual(Array.from(definitions[0]!.aliases), [
-		"Check now",
+	const groups = tab.getSettingDefinitions();
+	assert.equal(groups.length, 3);
+	assert.deepEqual(Array.from(groups.flatMap((group) => group.items.map((item) => item.name))), [
+		"Sync",
+		"Failed changes",
 		"Plugins",
 		"Themes",
 		"Add local extensions",
 	]);
+	assert.deepEqual(Array.from(groups[0]!.items[0]!.aliases!), ["Check now"]);
 	assert.equal(f.scans, 0);
-	const row = new Element();
-	const cleanup = definitions[0]!.render(new Setting(row));
+	const root = new Element();
+	const rows = groups.flatMap((group) => {
+		const container = root.createDiv({ cls: group.cls });
+		return group.items.map((definition) => {
+			const setting = new Setting(container)
+				.setName(definition.name)
+				.setDesc(definition.desc ?? "");
+			const cleanup = definition.render(setting);
+			return { name: definition.name, setting, cleanup };
+		});
+	});
 	assert.deepEqual(
-		row.buttons.map((button) => button.text),
+		root.buttons.map((button) => button.text),
 		["Check now", "Add"],
 	);
+	for (const { setting } of rows) {
+		assert.equal(
+			setting.settingEl.children.some((child) => child.find("setting-item")),
+			false,
+		);
+	}
 	await core.check();
-	assert.match(row.content, /Up to date/);
-	const before = row.content;
-	cleanup();
+	assert.match(root.content, /Up to date/);
+	const plugins = rows.find((row) => row.name === "Plugins")!;
+	const before = plugins.setting.settingEl.content;
+	plugins.cleanup();
 	core.stop();
-	assert.equal(row.content, before);
+	assert.equal(plugins.setting.settingEl.content, before);
+	assert.match(rows[0]!.setting.settingEl.content, /Stopped/);
+	for (const row of rows) row.cleanup();
+	tab.hide();
 });
