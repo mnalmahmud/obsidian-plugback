@@ -2,7 +2,7 @@
 
 Keep your Obsidian plugins and themes in sync across devices.
 
-Plugback saves your community plugin and theme list in `.obsidian/plugins/plugback/data.json`. Your existing vault sync carries that list and your settings between devices. Plugback installs or removes plugins and themes to match the list, so their downloaded files can stay out of vault sync.
+Plugback saves your community plugin and theme list in `.obsidian/plugins/plugback/data.json`. Your existing vault sync carries that list and your settings between devices. Plugback installs or removes plugins and themes to match the list.
 
 Requires Obsidian **1.8.7 or newer**.
 
@@ -17,13 +17,13 @@ Requires Obsidian **1.8.7 or newer**.
 
 When there’s no saved list, Plugback creates one from this device’s installed community plugins and themes.
 
-Plugback also creates and enables **Plugback Seed**, a small loader in `.obsidian/plugins/plugback-seed/`. Keep its files in vault sync. It downloads and enables Plugback on devices where Plugback’s code is missing.
+Plugback also creates and enables **Plugback Seed**, a small loader in `.obsidian/plugins/plugback-seed/`. Keep its files in vault sync. The seed installs Plugback automatically on your other devices.
 
 ### Additional devices
 
 1. Let the vault finish syncing before opening it in Obsidian.
 2. Enable community plugins if Obsidian asks.
-3. Plugback Seed downloads Plugback. Plugback installs the plugins and themes in the saved list.
+3. Wait for Plugback to install the plugins and themes in the saved list.
 
 An existing list determines what gets installed. Locally installed community plugins and themes absent from that list are removed. If you’re combining independently configured devices, follow [Combining existing setups](#combining-existing-setups) before syncing their lists.
 
@@ -37,7 +37,7 @@ Include these files in vault sync:
 | `.obsidian/plugins/plugback-seed/*` | The loader for setting up additional devices               |
 | Other Obsidian settings             | Enabled plugins, the selected theme, and other preferences |
 
-Exclude downloaded plugin code and theme files. Plugback installs them on each device.
+Exclude downloaded plugin and theme files.
 
 Use your vault’s configuration folder in place of `.obsidian` if you changed it. Make sure excluded files are no longer being synced; exclusions may leave previously synced files in place.
 
@@ -53,7 +53,7 @@ Add these rules to your vault’s `.gitignore`:
 .obsidian/themes/*
 ```
 
-These rules keep plugin settings, Plugback’s list, and the seed’s files while excluding downloaded plugin code and themes. Ignore rules don’t untrack files already committed to Git.
+Ignore rules don’t untrack files already committed to Git.
 
 To include an unlisted plugin, add an exception such as `!.obsidian/plugins/my-plugin/*`.
 
