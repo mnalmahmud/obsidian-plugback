@@ -58,14 +58,6 @@ Add these rules to your vault’s `.gitignore`:
 
 Ignore rules don’t untrack files already committed to Git. To keep an unlisted plugin in sync, add an exception such as `!.obsidian/plugins/my-plugin/*`.
 
-## What Plugback manages
-
-Plugback identifies plugins by their community plugin IDs and themes by their community theme names. Unlisted plugins and themes are left alone; include their files in vault sync yourself if needed. Plugback and Plugback Seed are excluded from the saved list.
-
-Complete installations keep their versions. A missing or empty plugin `main.js` or theme `theme.css` triggers a repair, which first tries the version recorded in the manifest. If that repair isn’t possible, Plugback uses the latest compatible version. Without a manifest, it chooses the latest compatible version directly.
-
-Modified plugins and themes with the original community ID or name are still managed by Plugback. It removes them if they’re absent from your sync list, and repairs can overwrite your modifications. Use a different, unlisted plugin ID or theme name to keep them outside Plugback’s control.
-
 ## Combine existing setups
 
 If your devices were set up separately, combine their saved lists before syncing them:
@@ -83,6 +75,28 @@ Plugback keeps local install and removal changes on the device until they can sy
 Fix the reported issue or restore a valid copy of the saved list, then select **Check now** in Plugback’s settings. Changes made on multiple devices can require manually combining list entries.
 
 Errors appear in settings or notices, with full details in the console.
+
+## FAQ
+
+### Does Plugback sync my vault or plugin settings?
+
+Your existing vault sync transfers those files. Plugback installs and removes plugins and themes to match the saved list.
+
+### Does Plugback sync versions or install updates?
+
+Versions aren’t synced or pinned. Complete installations keep their versions; new installations use the latest compatible version.
+
+A missing or empty plugin `main.js` or theme `theme.css` triggers a repair, which first tries the version recorded in the manifest. If that repair isn’t possible, Plugback uses the latest compatible version. Without a manifest, it chooses the latest compatible version directly.
+
+### Can I keep different plugins enabled on different devices?
+
+Plugback uses one installation list across devices. To choose which plugins are enabled on desktop or mobile, use [Device Extensions Switcher](https://community.obsidian.md/plugins/device-plugin-switcher).
+
+### Can it install private or unlisted plugins and themes?
+
+Plugback manages plugins by their community plugin IDs and themes by their community theme names. Unlisted plugins and themes are left alone; install them separately or include their files in vault sync. Plugback and Plugback Seed are excluded from the saved list.
+
+Modified plugins and themes with the original community ID or name are still managed by Plugback. It removes them if they’re absent from your sync list, and repairs can overwrite your modifications. Use a different, unlisted plugin ID or theme name to keep them outside Plugback’s control.
 
 ## Network use
 
