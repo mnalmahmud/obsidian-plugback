@@ -163,6 +163,40 @@ void test("invalid metadata and identity mismatches are rejected before resolvin
 	}
 });
 
+void test("recorded versions are preferred without a branch lookup, with incompatible releases falling back", async () => {
+	for (const kind of ["plugin", "theme"] as const) {
+		const f = registry();
+		const old =
+			kind === "plugin"
+				? plugin("0.9.0")
+				: { name: "Minimal", author: "A", version: "0.9.0", minAppVersion: "1.0.0" };
+		const current = { ...old, version: "1.0.0" };
+		const release = `https://github.com/owner/${kind === "plugin" ? "one" : "theme"}/releases/download/0.9.0/manifest.json`;
+		const branch =
+			kind === "plugin"
+				? "https://raw.githubusercontent.com/owner/one/HEAD/manifest.json"
+				: "https://raw.githubusercontent.com/owner/theme/stable/manifest.json";
+		f.replies.set(release, old);
+		const resolve = () =>
+			kind === "plugin"
+				? f.instance.resolvePlugin("one", "0.9.0")
+				: f.instance.resolveTheme("Minimal", "0.9.0");
+		let result = await resolve();
+		assert.ok(result.ok);
+		assert.equal("installVersion" in result ? result.installVersion : result.version, "0.9.0");
+		assert.equal(f.calls.includes(branch), false);
+		f.replies.set(release, { ...old, minAppVersion: "2.0.0" });
+		f.replies.set(branch, current);
+		f.replies.set(
+			`https://github.com/owner/${kind === "plugin" ? "one" : "theme"}/releases/download/1.0.0/manifest.json`,
+			current,
+		);
+		result = await resolve();
+		assert.ok(result.ok);
+		assert.equal("installVersion" in result ? result.installVersion : result.version, "1.0.0");
+	}
+});
+
 void test("unpublished versions, wrong identities, and mismatched release versions are rejected", async () => {
 	const f = registry();
 	f.replies.set("https://raw.githubusercontent.com/owner/one/HEAD/manifest.json", plugin());

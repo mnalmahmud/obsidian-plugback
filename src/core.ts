@@ -299,59 +299,68 @@ export class Core {
 		const changed = { plugin: 0, theme: 0 };
 		const repaired = { plugin: 0, theme: 0 };
 		for (const action of actions) {
-			this.require(guard);
-			try {
-				const prepared = await services.extensions.prepare(action);
+			for (let attempt = 0; attempt < 2; attempt++) {
+				let repair = false;
 				this.require(guard);
-				if ("skip" in prepared) {
-					throw new SyncError("operation", prepared.skip);
-				}
-				const alreadyPresent = await services.extensions.has(action);
-				this.require(guard);
-				if (alreadyPresent === action.present) {
-					issues.delete(key(action));
-					continue;
-				}
-				const latest = await services.shared.read();
-				this.require(guard);
-				if (!latest) {
-					throw new SyncError("missing-data", MISSING_LIST);
-				}
-				const wanted = (action.kind === "plugin" ? latest.plugins : latest.themes).includes(
-					action.id,
-				);
-				if (wanted !== action.present) {
-					this.dirty = true;
-					continue;
-				}
-				await prepared.run();
-				this.require(guard);
-				const present = await services.extensions.has(action);
-				this.require(guard);
-				if (present !== action.present) {
-					throw new SyncError(
-						"operation",
-						action.present
-							? `The ${action.kind} installation didn’t finish.`
-							: `The ${action.kind} couldn’t be removed.`,
+				try {
+					const prepared = await services.extensions.prepare(action, { upgrade: attempt > 0 });
+					this.require(guard);
+					if ("skip" in prepared) {
+						throw new SyncError("operation", prepared.skip);
+					}
+					repair = !!prepared.repair;
+					const alreadyPresent = await services.extensions.has(action);
+					this.require(guard);
+					if (alreadyPresent === action.present) {
+						issues.delete(key(action));
+						break;
+					}
+					const latest = await services.shared.read();
+					this.require(guard);
+					if (!latest) {
+						throw new SyncError("missing-data", MISSING_LIST);
+					}
+					const wanted = (action.kind === "plugin" ? latest.plugins : latest.themes).includes(
+						action.id,
 					);
+					if (wanted !== action.present) {
+						this.dirty = true;
+						break;
+					}
+					await prepared.run();
+					this.require(guard);
+					const present = await services.extensions.has(action);
+					this.require(guard);
+					if (present !== action.present) {
+						throw new SyncError(
+							"operation",
+							action.present
+								? `The ${action.kind} installation didn’t finish.`
+								: `The ${action.kind} couldn’t be removed.`,
+						);
+					}
+					issues.delete(key(action));
+					if (action.present && prepared.repair) repaired[action.kind]++;
+					else changed[action.kind]++;
+				} catch (error) {
+					if (
+						error instanceof Interrupted ||
+						(error instanceof SyncError &&
+							(error.code === "missing-data" || error.code === "invalid-data"))
+					) {
+						throw error;
+					}
+					if (action.present && repair && attempt === 0) {
+						console.warn("[Plugback] Repair failed; trying the latest compatible version", error);
+						continue;
+					}
+					console.error(
+						`[Plugback] Couldn’t ${action.present ? "install" : "remove"} ${action.kind} ${action.id}`,
+						error,
+					);
+					issues.set(key(action), { action, ...problem(error, "operation") });
 				}
-				issues.delete(key(action));
-				if (action.present && prepared.repair) repaired[action.kind]++;
-				else changed[action.kind]++;
-			} catch (error) {
-				if (
-					error instanceof Interrupted ||
-					(error instanceof SyncError &&
-						(error.code === "missing-data" || error.code === "invalid-data"))
-				) {
-					throw error;
-				}
-				console.error(
-					`[Plugback] Couldn’t ${action.present ? "install" : "remove"} ${action.kind} ${action.id}`,
-					error,
-				);
-				issues.set(key(action), { action, ...problem(error, "operation") });
+				break;
 			}
 		}
 		installed = await this.scan(guard);

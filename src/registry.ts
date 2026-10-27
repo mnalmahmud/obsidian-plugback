@@ -288,6 +288,7 @@ export class Registry {
 		kind: "plugin" | "theme",
 		id: string,
 	): Promise<Release | null> {
+		if (!parseSemver(version) || !/^[0-9A-Za-z.+-]{1,64}$/.test(version)) return null;
 		for (const tag of tags(version)) {
 			const urls = [`https://github.com/${repo}/releases/download/${tag}/manifest.json`];
 			if (kind === "theme")
@@ -343,7 +344,7 @@ export class Registry {
 		}
 		return null;
 	}
-	async resolvePlugin(id: string): Promise<PluginResolution> {
+	async resolvePlugin(id: string, preferredVersion?: string): Promise<PluginResolution> {
 		if (!isValidPluginId(id)) {
 			return { ok: false, reason: "Invalid plugin ID." };
 		}
@@ -351,19 +352,25 @@ export class Registry {
 		if (!repo) {
 			return { ok: false, reason: "This plugin isn’t in the community plugin directory." };
 		}
-		const latest = manifest(
-			await this.deps.fetchJson(`https://raw.githubusercontent.com/${repo}/HEAD/manifest.json`),
-			"plugin",
-		);
-		if (!latest) {
-			return { ok: false, reason: "The plugin’s information is invalid." };
-		}
-		if (latest.id !== id) {
-			return { ok: false, reason: "The plugin’s information identifies a different plugin." };
-		}
-		let selected = await this.release(repo, latest.version, "plugin", id);
+		let selected =
+			preferredVersion === undefined
+				? null
+				: await this.release(repo, preferredVersion, "plugin", id);
 		if (!selected || !this.compatible(selected.manifest)) {
-			selected = await this.older(repo, "HEAD", "plugin", id);
+			const latest = manifest(
+				await this.deps.fetchJson(`https://raw.githubusercontent.com/${repo}/HEAD/manifest.json`),
+				"plugin",
+			);
+			if (!latest) {
+				return { ok: false, reason: "The plugin’s information is invalid." };
+			}
+			if (latest.id !== id) {
+				return { ok: false, reason: "The plugin’s information identifies a different plugin." };
+			}
+			selected = await this.release(repo, latest.version, "plugin", id);
+			if (!selected || !this.compatible(selected.manifest)) {
+				selected = await this.older(repo, "HEAD", "plugin", id);
+			}
 		}
 		if (!selected) {
 			return {
@@ -380,7 +387,7 @@ export class Registry {
 			installVersion: selected.tag,
 		};
 	}
-	async resolveTheme(name: string): Promise<ThemeResolution> {
+	async resolveTheme(name: string, preferredVersion?: string): Promise<ThemeResolution> {
 		if (!isValidThemeName(name)) {
 			return { ok: false, reason: "Invalid theme name." };
 		}
@@ -395,24 +402,30 @@ export class Registry {
 			};
 		}
 		const ref = entry.branch ?? "HEAD";
-		const latest = manifest(
-			await this.deps.fetchJson(
-				`https://raw.githubusercontent.com/${entry.repo}/${ref}/manifest.json`,
-			),
-			"theme",
-		);
-		if (!latest) {
-			return { ok: false, reason: "The theme’s information is invalid." };
-		}
-		if (latest.name !== name) {
-			return { ok: false, reason: "The theme’s information identifies a different theme." };
-		}
-		let selected = await this.release(entry.repo, latest.version, "theme", name);
-		if (!selected && this.compatible(latest)) {
-			selected = { manifest: latest, tag: latest.version };
-		}
+		let selected =
+			preferredVersion === undefined
+				? null
+				: await this.release(entry.repo, preferredVersion, "theme", name);
 		if (!selected || !this.compatible(selected.manifest)) {
-			selected = await this.older(entry.repo, ref, "theme", name);
+			const latest = manifest(
+				await this.deps.fetchJson(
+					`https://raw.githubusercontent.com/${entry.repo}/${ref}/manifest.json`,
+				),
+				"theme",
+			);
+			if (!latest) {
+				return { ok: false, reason: "The theme’s information is invalid." };
+			}
+			if (latest.name !== name) {
+				return { ok: false, reason: "The theme’s information identifies a different theme." };
+			}
+			selected = await this.release(entry.repo, latest.version, "theme", name);
+			if (!selected && this.compatible(latest)) {
+				selected = { manifest: latest, tag: latest.version };
+			}
+			if (!selected || !this.compatible(selected.manifest)) {
+				selected = await this.older(entry.repo, ref, "theme", name);
+			}
 		}
 		if (!selected) {
 			return {

@@ -4,7 +4,7 @@ import type { App } from "obsidian";
 import type { LifecycleObserver, RawPluginManager } from "../src/host.ts";
 import { registerHooks } from "node:module";
 import { Registry, PLUGINS_REGISTRY_URL, THEMES_REGISTRY_URL } from "../src/registry.ts";
-import { Files, deferred } from "./helpers.ts";
+import { Files, deferred, fixture } from "./helpers.ts";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { transformSync } from "esbuild";
@@ -50,6 +50,7 @@ function hostFixture() {
 		installPlugin: async (_repo, _version, manifest) => {
 			calls.push(`install:${manifest.id}`);
 			files.put("plugin", manifest.id);
+			files.content.set(`.config/plugins/${manifest.id}/manifest.json`, JSON.stringify(manifest));
 		},
 		uninstallPlugin: async (id) => {
 			calls.push(`remove:${id}`);
@@ -69,15 +70,19 @@ function hostFixture() {
 		requestReadThemes: () => {
 			calls.push("refresh-themes");
 		},
-		installTheme: async (opts: { name: string }) => {
+		installTheme: async (opts: { name: string }, version = "1.0.0") => {
 			calls.push(`install-theme:${opts.name}`);
 			files.put("theme", opts.name);
+			files.content.set(
+				`.config/themes/${opts.name}/manifest.json`,
+				JSON.stringify({ name: opts.name, version }),
+			);
 		},
 		removeTheme: async (name: string) => {
 			calls.push(`remove-theme:${name}`);
 			files.content.delete(`.config/themes/${name}/theme.css`);
 		},
-		setTheme: (name: string) => {
+		setTheme: (name: string): void | Promise<void> => {
 			calls.push(`theme:${name}`);
 		},
 	};
@@ -129,6 +134,7 @@ function hostFixture() {
 		themeHook,
 		extensions,
 		inspector,
+		replies,
 	};
 }
 
@@ -164,6 +170,7 @@ interface SeedRuntime {
 function seedFixture() {
 	const files = new Files();
 	const calls: string[] = [];
+	const notices: string[] = [];
 	const versions: string[] = [];
 	const events = new Map<string, () => void>();
 	const release = {
@@ -172,7 +179,7 @@ function seedFixture() {
 		version: "1.0.0",
 		minAppVersion: "1.8.7",
 	};
-	let fetch: () => Promise<{
+	let fetch: (url: string) => Promise<{
 		json: unknown;
 	}> = () => Promise.resolve({ json: release });
 	const app = {
@@ -185,6 +192,7 @@ function seedFixture() {
 				calls.push("install");
 				versions.push(version);
 				files.put("plugin", "plugback");
+				files.content.set(".config/plugins/plugback/styles.css", "/* styles */");
 				files.content.set(".config/plugins/plugback/manifest.json", JSON.stringify(manifest));
 			},
 			enablePluginAndSave: async () => {
@@ -212,9 +220,13 @@ function seedFixture() {
 		},
 		require: () => ({
 			Plugin,
-			Notice: class {},
+			Notice: class {
+				constructor(message: string) {
+					notices.push(message);
+				}
+			},
 			normalizePath: (p: string) => p,
-			requestUrl: () => fetch(),
+			requestUrl: ({ url }: { url: string }) => fetch(url),
 			requireApiVersion: (version: string) => version === "1.8.7",
 		}),
 	});
@@ -226,6 +238,7 @@ function seedFixture() {
 		files,
 		calls,
 		versions,
+		notices,
 		release,
 		manager: app.plugins,
 		fire: (name: string) => events.get(name)?.(),
@@ -256,6 +269,97 @@ void test("native adapter prepares without mutation and delegates runnable insta
 		await remove.run();
 		assert.equal(await f.extensions.has(action), false);
 		assert.deepEqual(f.calls, [...expected]);
+	}
+});
+
+void test("repairs prefer recorded versions and upgrade only when those versions are unavailable", async (t) => {
+	for (const kind of ["plugin", "theme"] as const) {
+		for (const state of ["recorded", "unavailable", "missing manifest"] as const) {
+			const f = hostFixture();
+			const id = kind === "plugin" ? "one" : "Minimal";
+			const folder = `.config/${kind === "plugin" ? "plugins" : "themes"}/${id}`;
+			const manifest =
+				kind === "plugin"
+					? { ...pluginManifest, version: "0.9.0" }
+					: { name: id, author: "A", version: "0.9.0", minAppVersion: "1.0.0" };
+			f.files.content.set(`${folder}/data.json`, '{"keep":true}');
+			if (state !== "missing manifest")
+				f.files.content.set(`${folder}/manifest.json`, JSON.stringify(manifest));
+			if (state === "recorded")
+				f.replies.set(
+					`https://github.com/owner/${kind === "plugin" ? "one" : "theme"}/releases/download/0.9.0/manifest.json`,
+					manifest,
+				);
+			const install =
+				kind === "plugin"
+					? t.mock.method(f.manager, "installPlugin")
+					: t.mock.method(f.themeManager, "installTheme");
+			const prepared = await f.extensions.prepare({ kind, id, present: true });
+			assert.ok("run" in prepared);
+			await prepared.run();
+			assert.equal(install.mock.calls[0]?.arguments[1], state === "recorded" ? "0.9.0" : "1.0.0");
+			assert.equal(f.files.content.get(`${folder}/data.json`), '{"keep":true}');
+		}
+	}
+});
+
+void test("failed recorded-version downloads upgrade without overriding unloads or newer list changes", async (t) => {
+	for (const kind of ["plugin", "theme"] as const) {
+		for (const interruption of ["none", "unload", "remove from list"] as const) {
+			const f = hostFixture();
+			const runtime = fixture();
+			const id = kind === "plugin" ? "one" : "Minimal";
+			const folder = `.config/${kind === "plugin" ? "plugins" : "themes"}/${id}`;
+			const manifest =
+				kind === "plugin"
+					? { ...pluginManifest, version: "0.9.0" }
+					: { name: id, author: "A", version: "0.9.0", minAppVersion: "1.0.0" };
+			f.files.content.set(`${folder}/manifest.json`, JSON.stringify(manifest));
+			f.files.content.set(`${folder}/data.json`, '{"keep":true}');
+			f.replies.set(
+				`https://github.com/owner/${kind === "plugin" ? "one" : "theme"}/releases/download/0.9.0/manifest.json`,
+				manifest,
+			);
+			runtime.data = {
+				schemaVersion: 1,
+				plugins: kind === "plugin" ? [id] : [],
+				themes: kind === "theme" ? [id] : [],
+			};
+			runtime.services.extensions = f.extensions;
+			const core = runtime.core();
+			const attempts: string[] = [];
+			const failOldVersion = (version: string) => {
+				attempts.push(version);
+				if (version === "0.9.0") {
+					if (interruption === "unload") core.stop();
+					if (interruption === "remove from list")
+						runtime.data = { schemaVersion: 1, plugins: [], themes: [] };
+					throw new Error("Release files unavailable");
+				}
+			};
+			if (kind === "plugin") {
+				const original = f.manager.installPlugin;
+				t.mock.method(f.manager, "installPlugin", async (...args: Parameters<typeof original>) => {
+					failOldVersion(args[1]);
+					await original(...args);
+				});
+			} else {
+				const original = f.themeManager.installTheme;
+				t.mock.method(
+					f.themeManager,
+					"installTheme",
+					async (...args: Parameters<typeof original>) => {
+						failOldVersion(args[1]!);
+						await original(...args);
+					},
+				);
+			}
+			await core.check();
+			assert.deepEqual(attempts, interruption === "none" ? ["0.9.0", "1.0.0"] : ["0.9.0"]);
+			assert.equal(core.snapshot.phase, interruption === "unload" ? "stopped" : "idle");
+			assert.deepEqual(core.snapshot.issues, []);
+			assert.equal(f.files.content.get(`${folder}/data.json`), '{"keep":true}');
+		}
 	}
 });
 
@@ -308,6 +412,22 @@ void test("activation preserves disabled plugins and honors lifetime after inspe
 	assert.equal(f.calls.length, 0);
 });
 
+void test("activation respects enabled-plugin and theme settings changed during inspection", async () => {
+	const f = hostFixture();
+	f.files.put("plugin", "one");
+	f.files.put("theme", "Minimal");
+	f.files.content.set(".config/community-plugins.json", '["one"]');
+	f.files.content.set(".config/appearance.json", '{"cssTheme":"Minimal"}');
+	f.files.beforeRead = (path) => {
+		if (path.endsWith("/one/manifest.json"))
+			f.files.content.set(".config/community-plugins.json", "[]");
+		if (path.endsWith("/Minimal/manifest.json"))
+			f.files.content.set(".config/appearance.json", '{"cssTheme":"Things"}');
+	};
+	await f.extensions.restoreActivation(() => true);
+	assert.deepEqual(f.calls, []);
+});
+
 void test("activation errors identify whether enabling plugins or applying the theme failed", async () => {
 	const f = hostFixture();
 	f.files.put("plugin", "one");
@@ -324,7 +444,7 @@ void test("activation errors identify whether enabling plugins or applying the t
 		},
 	);
 	f.files.content.set(".config/community-plugins.json", "[]");
-	f.themeManager.setTheme = () => {
+	f.themeManager.setTheme = async () => {
 		throw new Error("Theme failed");
 	};
 	await assert.rejects(
@@ -709,6 +829,42 @@ void test("standalone seed honors unload during network resolution and rejects i
 	assert.equal(g.calls.length, 0);
 });
 
+void test("standalone seed selects the newest compatible published release when latest is unsupported", async () => {
+	for (const mismatch of [false, true]) {
+		const f = seedFixture();
+		f.setFetch((url) => {
+			if (url.includes("/latest/"))
+				return Promise.resolve({
+					json: { ...f.release, version: "2.0.0", minAppVersion: "99.0.0" },
+				});
+			if (url.endsWith("/versions.json"))
+				return Promise.resolve({
+					json: { "1.9.0": "1.8.7", "1.10.0": "1.8.7", "2.0.0": "99.0.0" },
+				});
+			const version = url.includes("/1.10.0/") ? "1.10.0" : "1.9.0";
+			return Promise.resolve({
+				json: { ...f.release, version: mismatch && version === "1.10.0" ? "1.0.0" : version },
+			});
+		});
+		await f.seed.check();
+		assert.deepEqual(f.versions, [mismatch ? "1.9.0" : "1.10.0"]);
+		assert.deepEqual(f.calls, ["install", "enable"]);
+	}
+});
+
+void test("standalone seed stops compatibility lookup after unloading", async () => {
+	const f = seedFixture();
+	let requests = 0;
+	f.setFetch(() => {
+		requests++;
+		f.seed.onunload();
+		return Promise.resolve({ json: { ...f.release, minAppVersion: "99.0.0" } });
+	});
+	await f.seed.check();
+	assert.equal(requests, 1);
+	assert.deepEqual(f.calls, []);
+});
+
 void test("standalone seed retries enabling its own installation without reinstalling", async (t) => {
 	const f = seedFixture();
 	const enable = t.mock.method(f.manager, "enablePluginAndSave", () =>
@@ -761,6 +917,91 @@ void test("standalone seed repairs the recorded version without fetching the lat
 	assert.deepEqual(f.calls, ["install", "enable"]);
 	assert.deepEqual(f.versions, ["2.0.0"]);
 	assert.equal(requests, 0);
+});
+
+void test("standalone seed repairs missing or empty files at the recorded version", async () => {
+	for (const file of ["main.js", "styles.css"]) {
+		for (const contents of [null, ""]) {
+			const f = seedFixture();
+			f.files.put("plugin", "plugback");
+			f.files.content.set(".config/plugins/plugback/styles.css", "/* styles */");
+			f.files.content.set(
+				".config/plugins/plugback/manifest.json",
+				JSON.stringify({ ...f.release, version: "0.9.0" }),
+			);
+			const path = `.config/plugins/plugback/${file}`;
+			if (contents === null) f.files.content.delete(path);
+			else f.files.content.set(path, contents);
+			f.setFetch(() => {
+				throw new Error("Should repair the recorded release");
+			});
+			await f.seed.check();
+			assert.deepEqual(f.versions, ["0.9.0"]);
+			assert.deepEqual(f.calls, ["install", "enable"]);
+		}
+	}
+});
+
+void test("standalone seed upgrades when its recorded release cannot be repaired", async (t) => {
+	const f = seedFixture();
+	f.files.content.set(
+		".config/plugins/plugback/manifest.json",
+		JSON.stringify({ ...f.release, version: "0.9.0" }),
+	);
+	const original = f.manager.installPlugin;
+	const attempts: string[] = [];
+	t.mock.method(
+		f.manager,
+		"installPlugin",
+		async (repo: string, version: string, manifest: typeof f.release) => {
+			attempts.push(version);
+			if (version === "0.9.0") throw new Error("Release unavailable");
+			await original(repo, version, manifest);
+		},
+	);
+	await f.seed.check();
+	assert.deepEqual(attempts, ["0.9.0", "1.0.0"]);
+	assert.deepEqual(f.calls, ["install", "enable"]);
+});
+
+void test("standalone seed does not install an upgrade after unloading during fallback lookup", async (t) => {
+	const f = seedFixture();
+	f.files.content.set(
+		".config/plugins/plugback/manifest.json",
+		JSON.stringify({ ...f.release, version: "0.9.0" }),
+	);
+	t.mock.method(f.manager, "installPlugin", () => Promise.reject(new Error("Release unavailable")));
+	const entered = deferred<void>();
+	const response = deferred<{ json: unknown }>();
+	f.setFetch(() => {
+		entered.resolve();
+		return response.promise;
+	});
+	const job = f.seed.check();
+	await entered.promise;
+	f.seed.onunload();
+	response.resolve({ json: f.release });
+	await job;
+	assert.deepEqual(f.calls, []);
+});
+
+void test("standalone seed reports an app-version requirement separately from a release-version mismatch", async (t) => {
+	const f = seedFixture();
+	const original = f.manager.installPlugin;
+	t.mock.method(
+		f.manager,
+		"installPlugin",
+		async (repo: string, version: string, manifest: typeof f.release) => {
+			await original(repo, version, manifest);
+			f.files.content.set(
+				".config/plugins/plugback/manifest.json",
+				JSON.stringify({ ...manifest, minAppVersion: "99.0.0" }),
+			);
+		},
+	);
+	await f.seed.check();
+	assert.deepEqual(f.notices, ["Plugback: setup failed: Obsidian 99.0.0 or newer is required."]);
+	assert.deepEqual(f.calls, ["install"]);
 });
 
 void test("standalone seed retries the selected release after incompatible installation metadata", async (t) => {
@@ -820,6 +1061,7 @@ void test("standalone seed preserves invalid installation metadata it did not wr
 void test("standalone seed leaves an existing complete installation disabled", async () => {
 	const f = seedFixture();
 	f.files.put("plugin", "plugback");
+	f.files.content.set(".config/plugins/plugback/styles.css", "/* styles */");
 	f.files.content.set(".config/plugins/plugback/manifest.json", JSON.stringify(f.release));
 	await f.seed.check();
 	assert.equal(f.calls.length, 0);

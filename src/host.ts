@@ -70,7 +70,7 @@ interface ThemeInstallOpts {
 interface RawThemeManager {
 	installTheme: (opts: ThemeInstallOpts, version?: string) => Promise<void>;
 	removeTheme: (name: string) => Promise<void>;
-	setTheme?: (name: string) => void;
+	setTheme?: (name: string) => void | Promise<void>;
 	requestReadThemes?: () => void;
 	readThemes?: () => void;
 	requestLoadTheme?: () => void;
@@ -241,19 +241,16 @@ export class Inspector {
 			? isValidPluginId(id) && id !== this.selfId && id !== SEED_ID
 			: isValidThemeName(id);
 	}
-	private async manifest(kind: Kind, id: string): Promise<Record<string, unknown> | null> {
+	async manifest(
+		kind: Kind,
+		id: string,
+	): Promise<(Record<string, unknown> & { version: string }) | null> {
 		if (!this.valid(kind, id)) {
 			return null;
 		}
 		const folder = `${this.directory(kind)}/${id}`;
 		try {
 			if (!(await this.files.exists(`${folder}/manifest.json`))) {
-				return null;
-			}
-			const code = await this.files.stat(
-				`${folder}/${kind === "plugin" ? "main.js" : "theme.css"}`,
-			);
-			if (code?.type !== "file" || code.size === 0) {
 				return null;
 			}
 			const text = await this.files.read(`${folder}/manifest.json`);
@@ -274,7 +271,7 @@ export class Inspector {
 			) {
 				return null;
 			}
-			return manifest;
+			return manifest as Record<string, unknown> & { version: string };
 		} catch (error) {
 			if (missing(error)) {
 				return null;
@@ -282,8 +279,19 @@ export class Inspector {
 			throw error;
 		}
 	}
+	private async hasEntryFile(kind: Kind, id: string): Promise<boolean> {
+		try {
+			const file = await this.files.stat(
+				`${this.directory(kind)}/${id}/${kind === "plugin" ? "main.js" : "theme.css"}`,
+			);
+			return file?.type === "file" && file.size > 0;
+		} catch (error) {
+			if (missing(error)) return false;
+			throw error;
+		}
+	}
 	async has(kind: Kind, id: string): Promise<boolean> {
-		return (await this.manifest(kind, id)) !== null;
+		return (await this.manifest(kind, id)) !== null && (await this.hasEntryFile(kind, id));
 	}
 	async hasFiles(kind: Kind, id: string): Promise<boolean> {
 		if (!this.valid(kind, id)) return false;
@@ -306,7 +314,7 @@ export class Inspector {
 			}
 			const id = folder.slice(dir.length + 1);
 			const manifest = await this.manifest(kind, id);
-			if (manifest) {
+			if (manifest && (await this.hasEntryFile(kind, id))) {
 				installed.set(id, typeof manifest.name === "string" ? manifest.name : id);
 			}
 		}
@@ -364,7 +372,10 @@ export class ObsidianExtensions implements Extensions {
 	has(action: Action): Promise<boolean> {
 		return this.inspector.has(action.kind, action.id);
 	}
-	async prepare(action: Action): ReturnType<Extensions["prepare"]> {
+	async prepare(
+		action: Action,
+		options?: { upgrade?: boolean },
+	): ReturnType<Extensions["prepare"]> {
 		if (action.kind === "plugin" ? !isValidPluginId(action.id) : !isValidThemeName(action.id)) {
 			return { skip: action.kind === "plugin" ? "Invalid plugin ID." : "Invalid theme name." };
 		}
@@ -384,7 +395,10 @@ export class ObsidianExtensions implements Extensions {
 						this.pluginHook.runManaged(action.id, () => this.plugins.uninstallPlugin(action.id)),
 				};
 			}
-			const release = await this.registry.resolvePlugin(action.id);
+			const version = options?.upgrade
+				? undefined
+				: (await this.inspector.manifest("plugin", action.id))?.version;
+			const release = await this.registry.resolvePlugin(action.id, version);
 			if (!release.ok) {
 				return { skip: release.reason };
 			}
@@ -414,7 +428,10 @@ export class ObsidianExtensions implements Extensions {
 						.finally(() => this.refreshThemes()),
 			};
 		}
-		const release = await this.registry.resolveTheme(action.id);
+		const version = options?.upgrade
+			? undefined
+			: (await this.inspector.manifest("theme", action.id))?.version;
+		const release = await this.registry.resolveTheme(action.id, version);
 		if (!release.ok) {
 			return { skip: release.reason };
 		}
@@ -463,7 +480,12 @@ export class ObsidianExtensions implements Extensions {
 							if (!alive()) {
 								return;
 							}
-							await this.plugins.enablePlugin(id);
+							const current: unknown = JSON.parse(
+								await adapter.read(`${dir}/community-plugins.json`),
+							);
+							if (!alive()) return;
+							if (Array.isArray(current) && current.includes(id))
+								await this.plugins.enablePlugin(id);
 						}
 					}
 				}
@@ -492,7 +514,14 @@ export class ObsidianExtensions implements Extensions {
 					(await this.inspector.has("theme", name)) &&
 					alive()
 				) {
-					this.themes.setTheme?.(name);
+					const current: unknown = JSON.parse(await adapter.read(`${dir}/appearance.json`));
+					if (
+						current &&
+						typeof current === "object" &&
+						(current as { cssTheme?: unknown }).cssTheme === name &&
+						alive()
+					)
+						await this.themes.setTheme?.(name);
 				}
 			}
 		} catch (error) {

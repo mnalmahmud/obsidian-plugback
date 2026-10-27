@@ -179,7 +179,10 @@ export interface DeviceStore {
 }
 export interface Extensions {
 	scan(pending: readonly Intent[]): Promise<Installed>;
-	prepare(action: Action): Promise<
+	prepare(
+		action: Action,
+		options?: { upgrade?: boolean },
+	): Promise<
 		| {
 				repair?: boolean;
 				run: () => Promise<void>;
